@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: school-management-postgres
+    environment:
+      POSTGRES_DB: school_management
+      POSTGRES_USER: school_management
+      POSTGRES_PASSWORD: ecole_management#2025
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
