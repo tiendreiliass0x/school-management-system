@@ -1,211 +1,260 @@
-# School Management System SaaS
+# School Management System
 
-A comprehensive school management system built with **Bun + Hono** backend and **Next.js** frontend.
+A comprehensive, production-ready school management SaaS application built with modern technologies.
+
+## 🏗️ Architecture
+
+- **Backend**: Bun + Hono (TypeScript)
+- **Frontend**: Next.js 15 + TypeScript
+- **Database**: PostgreSQL with Drizzle ORM
+- **Cache**: Redis
+- **Deployment**: Docker + Docker Compose
+- **Reverse Proxy**: Nginx
 
 ## ✨ Features
 
-### **Multi-Role Support**
-- **Super Admin**: Manage all schools and global system settings
-- **School Admin**: Manage users and classes within their school
-- **Teacher**: Manage assigned classes, grades, and assignments  
-- **Student**: View classes, grades, and assignments
-- **Parent**: View child's academic information
+### Core Functionality
+- 🏫 **Multi-tenant Architecture** - Support multiple schools
+- 👥 **Role-based Access Control** - Super Admin, School Admin, Teacher, Student, Parent
+- 🎓 **Class Management** - Create and manage classes with enrollment
+- 📚 **Assignment System** - Create assignments with due dates and instructions
+- 📊 **Grading System** - Individual and bulk grading with feedback
+- 📈 **Academic Year Management** - Track multiple academic periods
+- 👤 **User Management** - Comprehensive user profiles and permissions
 
-### **Core Functionality**
-- 🏫 **School Management**: Create and manage multiple schools
-- 👥 **User Management**: Add users with role-based permissions
-- 📚 **Class Management**: Create classes and manage enrollments
-- 📝 **Assignment & Grading System**: Create assignments and grade students
-- 📊 **Attendance Tracking**: Track student attendance
-- 🔐 **Authentication**: JWT-based auth with role-based access control
+### Security Features
+- 🔒 **JWT Authentication** with secure session management
+- 🛡️ **Rate Limiting** - Prevents abuse and DDoS attacks
+- 🔐 **Input Sanitization** - Prevents XSS and injection attacks
+- 🚫 **CORS Protection** - Configurable cross-origin policies
+- 🔑 **Password Security** - Bcrypt hashing with salt rounds
+- 🎯 **Security Headers** - HSTS, CSP, XSS protection
+
+### Performance & Reliability
+- ⚡ **Caching System** - Redis for session and application caching
+- 🔄 **API Retry Logic** - Automatic retry with exponential backoff
+- 📊 **Health Monitoring** - Comprehensive health checks
+- 🔧 **Error Boundary** - Graceful error handling and recovery
+- 📈 **Performance Optimization** - Code splitting and lazy loading
+- 💾 **Database Optimization** - Indexed queries and connection pooling
 
 ## 🚀 Quick Start
 
-### **Prerequisites**
-- **Node.js** 18+ 
-- **Bun** runtime
-- **Docker** & **Docker Compose** (for PostgreSQL)
+### Prerequisites
+- Docker and Docker Compose
+- Bun (for local development)
+- Node.js 18+ (for frontend)
 
-### **1. Clone & Install**
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd school-management-saas
+   ```
+
+2. **Set up environment variables**
+   ```bash
+   # Backend
+   cp backend/.env.example backend/.env
+   
+   # Frontend
+   cp frontend/.env.example frontend/.env.local
+   ```
+
+3. **Start with Docker Compose**
+   ```bash
+   # Development
+   docker-compose up -d
+   
+   # Production
+   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+   ```
+
+4. **Run database migrations and seed data**
+   ```bash
+   # Wait for services to start, then:
+   docker-compose exec backend bun run migrate
+   docker-compose exec backend bun run seed
+   ```
+
+5. **Access the application**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000
+   - API Documentation: http://localhost:8000/docs
+
+## 👤 Demo Accounts
+
+After seeding the database, you can use these accounts:
+
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | superadmin@system.com | admin123! |
+| School Admin | admin@demoschool.edu | admin123! |
+| Teacher | alice.johnson@demoschool.edu | teacher123! |
+| Student | emma.davis@student.demoschool.edu | student123! |
+| Parent | michael.davis@parent.demoschool.edu | parent123! |
+
+## 🔧 Development
+
+### Backend Development
 ```bash
-git clone <repository-url>
-cd school-management-saas
-
-# Install backend dependencies
 cd backend
 bun install
-
-# Install frontend dependencies  
-cd ../frontend
-npm install
-```
-
-### **2. Start Database**
-```bash
-# From backend directory
-cd backend
-docker-compose up -d
-```
-
-### **3. Setup Database Schema**
-```bash
-# From backend directory
-bun run db:push
-```
-
-### **4. Start Backend Server**
-```bash
-# From backend directory  
 bun run dev
 ```
 
-### **5. Start Frontend**
-```bash
-# From frontend directory
-cd ../frontend
-npm run dev
-```
-
-## 🌐 Access the Application
-
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-
-### **Demo Accounts**
-After creating a school and users through the UI, you can use these demo credentials:
-
-- **Super Admin**: `admin@school.com` / `password`
-- **School Admin**: `schooladmin@school.com` / `password`  
-- **Teacher**: `teacher@school.com` / `password`
-- **Student**: `student@school.com` / `password`
-
-## 📋 Getting Started Workflow
-
-1. **Access the login page** at http://localhost:3000
-2. **Create a Super Admin account** (first user becomes super admin)
-3. **Login as Super Admin**
-4. **Create a school** via Schools → Add School
-5. **Add users to the school** via Users → Add User
-6. **Create classes** and manage enrollments
-7. **Set up academic years, assignments, and grades**
-
-## 🏗️ System Architecture
-
-### **Backend Stack**
-- **Runtime**: Bun
-- **Framework**: Hono (fast web framework)
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: JWT with bcrypt password hashing
-- **Validation**: Zod schemas
-
-### **Frontend Stack**  
-- **Framework**: Next.js 15 with TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: Custom components with Heroicons
-- **State Management**: React Context API
-- **HTTP Client**: Custom API client with fetch
-
-### **Database Schema**
-```
-schools -> users -> classes -> enrollments
-                 -> assignments -> grades
-                 -> attendance
-```
-
-## 📁 Project Structure
-
-```
-├── backend/
-│   ├── src/
-│   │   ├── db/           # Database schema and connection
-│   │   ├── routes/       # API route handlers
-│   │   ├── middleware/   # Authentication middleware
-│   │   └── lib/          # Utilities and auth helpers
-│   ├── drizzle/          # Database migrations
-│   └── index.ts          # Server entry point
-│
-├── frontend/
-│   ├── src/
-│   │   ├── app/          # Next.js app directory
-│   │   ├── components/   # Reusable UI components
-│   │   ├── contexts/     # React contexts
-│   │   └── lib/          # API client and utilities
-│   └── public/           # Static assets
-│
-├── docker-compose.yml    # PostgreSQL database setup
-└── README.md
-```
-
-## 🔧 Development Commands
-
-### **Backend**
-```bash
-cd backend
-
-# Development server with hot reload
-bun run dev
-
-# Database operations
-bun run db:generate    # Generate migrations
-bun run db:push       # Push schema to database  
-bun run db:studio     # Open Drizzle studio
-
-# Production
-bun run start
-```
-
-### **Frontend**
+### Frontend Development
 ```bash
 cd frontend
-
-# Development server
+npm install
 npm run dev
-
-# Production build
-npm run build
-npm run start
-
-# Linting
-npm run lint
 ```
 
-## 🔐 Environment Configuration
-
-### **Backend (.env)**
+### Database Operations
 ```bash
-PORT=8000
-DATABASE_URL=postgresql://postgres:password@localhost:5432/school_management
+# Run migrations
+bun run migrate
+
+# Seed database
+bun run seed
+
+# Reset database (caution: destroys all data)
+bun run reset
+```
+
+## 📦 Deployment
+
+### Production Deployment
+```bash
+# Make scripts executable
+chmod +x scripts/*.sh
+
+# Deploy to production
+./scripts/deploy.sh
+```
+
+### Environment Configuration
+
+#### Backend Environment Variables
+```env
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
 JWT_SECRET=your-super-secret-jwt-key
-NODE_ENV=development
+ALLOWED_ORIGINS=https://yourdomain.com
+NODE_ENV=production
 ```
 
-### **Frontend (.env.local)**
+#### Frontend Environment Variables
+```env
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
+NEXT_PUBLIC_APP_NAME="Your School Name"
+NODE_ENV=production
+```
+
+## 🔒 Security Best Practices
+
+### Authentication & Authorization
+- JWT tokens with configurable expiration
+- Role-based access control (RBAC)
+- Multi-tenant data isolation
+- Secure password hashing (bcrypt)
+
+### API Security
+- Rate limiting on all endpoints
+- Input validation and sanitization
+- CORS configuration
+- Security headers (HSTS, CSP, etc.)
+- Request/response logging
+
+### Data Protection
+- Encrypted database connections
+- Secure session management
+- Data validation at all layers
+- SQL injection prevention
+
+## 📊 Monitoring & Maintenance
+
+### Health Checks
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
+# Check all services
+./scripts/health-check.sh
+
+# Individual service status
+docker-compose ps
 ```
 
-## 🚧 Roadmap
+### Database Backup
+```bash
+# Manual backup
+./scripts/backup.sh
 
-- [ ] **Advanced Grading**: Weighted grade categories, GPA calculation
-- [ ] **Parent Portal**: Parent accounts with child progress visibility
-- [ ] **Real-time Notifications**: WebSocket-based notifications
-- [ ] **File Uploads**: Assignment submissions and document storage
-- [ ] **Analytics Dashboard**: Academic performance analytics
-- [ ] **Mobile App**: React Native companion app
-- [ ] **Multi-language Support**: Internationalization (i18n)
+# Automated daily backups are configured in docker-compose
+```
+
+### Logs
+```bash
+# View application logs
+docker-compose logs backend
+docker-compose logs frontend
+
+# Nginx access logs
+docker-compose logs nginx
+```
+
+## 🛠️ API Documentation
+
+### Authentication Endpoints
+- `POST /api/auth/login` - User login
+- `GET /api/auth/me` - Get current user
+- `PUT /api/auth/change-password` - Change password
+
+### School Management
+- `GET /api/schools` - List schools
+- `POST /api/schools` - Create school
+- `PUT /api/schools/:id` - Update school
+- `DELETE /api/schools/:id` - Delete school
+
+### User Management
+- `GET /api/users` - List users
+- `POST /api/users` - Create user
+- `PUT /api/users/:id` - Update user
+- `DELETE /api/users/:id` - Deactivate user
+
+### Class Management
+- `GET /api/classes` - List classes
+- `POST /api/classes` - Create class
+- `PUT /api/classes/:id` - Update class
+- `DELETE /api/classes/:id` - Delete class
+
+### Assignment & Grading
+- `GET /api/assignments` - List assignments
+- `POST /api/assignments` - Create assignment
+- `GET /api/grades` - List grades
+- `POST /api/grades/bulk` - Bulk grade assignment
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
----
+## 🆘 Support
 
-**Built with ❤️ using Bun, Hono, Next.js, and TypeScript**
+- 📧 Email: support@yourschool.com
+- 📖 Documentation: [docs.yourschool.com](https://docs.yourschool.com)
+- 🐛 Bug Reports: [GitHub Issues](https://github.com/yourrepo/issues)
+
+## 🔄 Version History
+
+- **v1.0.0** - Initial release with core functionality
+  - Multi-tenant school management
+  - User roles and permissions
+  - Class and assignment management
+  - Grading system
+  - Production-ready deployment

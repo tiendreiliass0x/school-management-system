@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { HTTPException } from 'hono/http-exception'
 
 import authRoutes from './src/routes/auth'
 import schoolsRoutes from './src/routes/schools'
@@ -10,14 +11,43 @@ import classesRoutes from './src/routes/classes'
 import assignmentsRoutes from './src/routes/assignments'
 import gradesRoutes from './src/routes/grades'
 
+import { 
+  rateLimit, 
+  securityHeaders, 
+  sanitizeInput, 
+  requestLogger, 
+  limitContentLength,
+  corsConfig 
+} from './src/middleware/security'
+
 const app = new Hono()
 
-app.use('*', logger())
-app.use('*', cors({
-  origin: ['http://localhost:3000'],
-  allowHeaders: ['Content-Type', 'Authorization'],
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+// Security middleware
+app.use('*', securityHeaders())
+app.use('*', requestLogger())
+app.use('*', limitContentLength(5 * 1024 * 1024)) // 5MB limit
+
+// CORS with proper configuration
+app.use('*', cors(corsConfig()))
+
+// Rate limiting - different limits for different endpoints
+app.use('/api/auth/login', rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window
+  message: 'Too many login attempts, please try again later'
 }))
+
+app.use('/api/*', rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per window per IP
+  message: 'Too many requests, please slow down'
+}))
+
+// Input sanitization
+app.use('*', sanitizeInput())
+
+// Request logging
+app.use('*', logger())
 
 app.get('/', (c) => {
   return c.json({ 
@@ -38,9 +68,67 @@ app.route('/api/classes', classesRoutes)
 app.route('/api/assignments', assignmentsRoutes)
 app.route('/api/grades', gradesRoutes)
 
+// Global error handler
+app.onError((err, c) => {
+  console.error('Global error handler:', err)
+  
+  if (err instanceof HTTPException) {
+    return c.json({
+      error: err.message,
+      status: err.status
+    }, err.status)
+  }
+
+  // Handle validation errors from Zod
+  if (err.name === 'ZodError') {
+    return c.json({
+      error: 'Validation failed',
+      details: err.issues || err.errors
+    }, 400)
+  }
+
+  // Handle database errors
+  if (err.message.includes('duplicate key') || err.message.includes('unique constraint')) {
+    return c.json({
+      error: 'Resource already exists',
+      details: 'A resource with these details already exists'
+    }, 409)
+  }
+
+  if (err.message.includes('foreign key constraint')) {
+    return c.json({
+      error: 'Invalid reference',
+      details: 'Referenced resource does not exist'
+    }, 400)
+  }
+
+  // Production vs development error responses
+  if (process.env.NODE_ENV === 'production') {
+    return c.json({
+      error: 'Internal server error',
+      message: 'Something went wrong. Please try again later.'
+    }, 500)
+  } else {
+    return c.json({
+      error: 'Internal server error',
+      message: err.message,
+      stack: err.stack
+    }, 500)
+  }
+})
+
+// 404 handler
+app.notFound((c) => {
+  return c.json({
+    error: 'Not found',
+    message: 'The requested resource was not found'
+  }, 404)
+})
+
 const port = Number(process.env.PORT) || 8000
 
-console.log(`Server is running on http://localhost:${port}`)
+console.log(`🚀 Server is running on http://localhost:${port}`)
+console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`)
 
 serve({
   fetch: app.fetch,
