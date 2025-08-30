@@ -7,6 +7,8 @@ import authRoutes from './src/routes/auth'
 import schoolsRoutes from './src/routes/schools'
 import usersRoutes from './src/routes/users'
 import classesRoutes from './src/routes/classes'
+import assignmentsRoutes from './src/routes/assignments'
+import gradesRoutes from './src/routes/grades'
 
 const app = new Hono()
 
@@ -33,6 +35,8 @@ app.route('/api/auth', authRoutes)
 app.route('/api/schools', schoolsRoutes)
 app.route('/api/users', usersRoutes)
 app.route('/api/classes', classesRoutes)
+app.route('/api/assignments', assignmentsRoutes)
+app.route('/api/grades', gradesRoutes)
 
 const port = Number(process.env.PORT) || 8000
 
