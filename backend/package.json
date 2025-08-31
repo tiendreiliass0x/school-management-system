@@ -6,16 +6,28 @@
   "scripts": {
     "dev": "bun run --watch index.ts",
     "start": "bun run index.ts",
+    "build": "bun build index.ts --outdir ./dist --target bun --sourcemap --minify",
+    "build:production": "NODE_ENV=production bun build index.ts --outdir ./dist --target bun --minify --splitting",
+    "start:production": "NODE_ENV=production bun run dist/index.js",
+    "preview": "bun run build && bun run start:production",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'Add linter when needed'",
+    "test": "bun test",
+    "healthcheck": "curl -f http://localhost:8000/health || exit 1",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun run src/db/migrate.ts",
+    "db:seed": "bun run src/db/seed.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "bun run src/seed.ts"
+    "db:reset": "bun run db:push --force && bun run db:seed",
+    "logs": "tail -f logs/app.log",
+    "docker:build": "docker build -t school-management-backend .",
+    "docker:run": "docker run -p 8000:8000 --env-file .env school-management-backend"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "latest",
+    "typescript": "^5.3.0"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",

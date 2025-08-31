@@ -104,6 +104,28 @@ bun install
 bun run dev
 ```
 
+### Backend Production Build
+```bash
+cd backend
+
+# Build for production
+bun run build:production
+
+# Start production server
+bun run start:production
+
+# Build with testing
+./scripts/build-backend.sh --test
+
+# All available commands:
+bun run build              # Build with sourcemaps
+bun run build:production   # Optimized production build
+bun run preview            # Build and run production locally
+bun run clean              # Clean build artifacts
+bun run typecheck          # Run TypeScript checks
+bun run healthcheck        # Health check endpoint test
+```
+
 ### Frontend Development
 ```bash
 cd frontend

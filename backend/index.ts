@@ -27,8 +27,33 @@ app.use('*', securityHeaders())
 app.use('*', requestLogger())
 app.use('*', limitContentLength(5 * 1024 * 1024)) // 5MB limit
 
-// CORS with proper configuration
-app.use('*', cors(corsConfig()))
+// CORS configuration - more permissive for development
+console.log(`🌍 CORS Configuration - Environment: ${process.env.NODE_ENV}`)
+
+if (process.env.NODE_ENV === 'development') {
+  console.log('🔓 Development mode: Using permissive CORS settings')
+  app.use('*', cors({
+    origin: true, // Allow all origins in development
+    allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Requested-With', 'Accept', 'Origin'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    credentials: true,
+  }))
+  
+  // Additional CORS debugging middleware for development
+  app.use('*', async (c, next) => {
+    const origin = c.req.header('Origin')
+    if (origin) {
+      c.header('Access-Control-Allow-Origin', origin)
+      c.header('Access-Control-Allow-Credentials', 'true')
+    }
+    await next()
+  })
+} else {
+  console.log('🔒 Production mode: Using strict CORS settings')
+  // Production CORS configuration
+  const corsOptions = corsConfig()
+  app.use('*', cors(corsOptions))
+}
 
 // Rate limiting - different limits for different endpoints
 app.use('/api/auth/login', rateLimit({
@@ -59,6 +84,21 @@ app.get('/', (c) => {
 
 app.get('/health', (c) => {
   return c.json({ status: 'healthy', timestamp: new Date().toISOString() })
+})
+
+// CORS debugging endpoint
+app.get('/cors-test', (c) => {
+  return c.json({
+    message: 'CORS is working!',
+    origin: c.req.header('Origin'),
+    method: c.req.method,
+    headers: Object.fromEntries(
+      Object.entries(c.req.header()).filter(([key]) => 
+        key.toLowerCase().includes('origin') || key.toLowerCase().includes('access-control')
+      )
+    ),
+    timestamp: new Date().toISOString()
+  })
 })
 
 app.route('/api/auth', authRoutes)

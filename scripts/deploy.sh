@@ -29,8 +29,12 @@ if [ -d ".git" ]; then
     git pull origin main
 fi
 
+# Build backend for production
+echo "🔨 Building backend..."
+./scripts/build-backend.sh
+
 # Build and start services
-echo "🔨 Building and starting services..."
+echo "🚀 Building and starting services..."
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 # Wait for services to be healthy

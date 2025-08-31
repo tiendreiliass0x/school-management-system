@@ -16,20 +16,23 @@ RUN bun install --frozen-lockfile --production
 
 # Copy source code
 COPY . .
-COPY --chown=nodejs:nodejs . .
 
-# Create logs directory
-RUN mkdir -p logs && chown -R nodejs:nodejs logs
+# Build the application for production
+RUN bun run build:production
 
-# Expose port
-EXPOSE 8000
+# Create logs directory and set permissions
+RUN mkdir -p logs dist && \
+    chown -R nodejs:nodejs logs dist
 
 # Switch to non-root user
 USER nodejs
+
+# Expose port
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD bun run healthcheck || exit 1
 
-# Start the application
-CMD ["bun", "run", "start"]
+# Start the production build
+CMD ["bun", "run", "start:production"]

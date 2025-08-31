@@ -196,18 +196,39 @@ export function limitContentLength(maxBytes: number = 1024 * 1024) { // 1MB defa
   }
 }
 
-// CORS configuration for production
+// CORS configuration for development and production
 export function corsConfig() {
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']
+  const isDevelopment = process.env.NODE_ENV === 'development'
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001'
+  ]
   
   return {
     origin: (origin: string) => {
       // Allow requests with no origin (mobile apps, curl, etc.)
       if (!origin) return true
+      
+      // In development, be more permissive
+      if (isDevelopment) {
+        return origin.includes('localhost') || origin.includes('127.0.0.1') || allowedOrigins.includes(origin)
+      }
+      
+      // In production, be strict about allowed origins
       return allowedOrigins.includes(origin)
     },
-    allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: [
+      'Content-Type', 
+      'Authorization', 
+      'X-API-Key', 
+      'X-Requested-With',
+      'Accept',
+      'Origin'
+    ],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true,
+    maxAge: 86400, // Cache preflight response for 24 hours
   }
 }
