@@ -33,7 +33,7 @@ console.log(`🌍 CORS Configuration - Environment: ${process.env.NODE_ENV}`)
 if (process.env.NODE_ENV === 'development') {
   console.log('🔓 Development mode: Using permissive CORS settings')
   app.use('*', cors({
-    origin: true, // Allow all origins in development
+    origin: () => '*', // Allow all origins in development
     allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Requested-With', 'Accept', 'Origin'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true,
@@ -52,7 +52,18 @@ if (process.env.NODE_ENV === 'development') {
   console.log('🔒 Production mode: Using strict CORS settings')
   // Production CORS configuration
   const corsOptions = corsConfig()
-  app.use('*', cors(corsOptions))
+  app.use('*', cors({
+    ...corsOptions,
+    origin: (origin, c) => {
+      // If corsOptions.origin is a function, call it with the origin
+      if (typeof corsOptions.origin === 'function') {
+        // If allowed, return the origin string, else return null
+        return corsOptions.origin(origin) ? origin : null
+      }
+      // If it's a string or array, just return as is
+      return corsOptions.origin
+    }
+  }))
 }
 
 // Rate limiting - different limits for different endpoints
