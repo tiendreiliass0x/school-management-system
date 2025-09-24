@@ -19,6 +19,11 @@ import {
   limitContentLength,
   corsConfig 
 } from './src/middleware/security'
+import { 
+  auditMiddleware, 
+  rateLimitAuditMiddleware, 
+  tokenAuditMiddleware 
+} from './src/middleware/audit'
 
 const app = new Hono()
 
@@ -27,27 +32,41 @@ app.use('*', securityHeaders())
 app.use('*', requestLogger())
 app.use('*', limitContentLength(5 * 1024 * 1024)) // 5MB limit
 
+// Audit logging middleware
+app.use('*', auditMiddleware())
+app.use('*', tokenAuditMiddleware())
+
 // CORS configuration - more permissive for development
 console.log(`🌍 CORS Configuration - Environment: ${process.env.NODE_ENV}`)
 
 if (process.env.NODE_ENV === 'development') {
-  console.log('🔓 Development mode: Using permissive CORS settings')
+  console.log('🔓 Development mode: Using secure localhost CORS settings')
+  const developmentOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000'
+  ]
+  
   app.use('*', cors({
-    origin: () => '*', // Allow all origins in development
+    origin: (origin) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return origin
+      
+      // Only allow localhost/127.0.0.1 origins in development
+      const isAllowed = developmentOrigins.includes(origin) || 
+                       origin.includes('localhost') || 
+                       origin.includes('127.0.0.1')
+      
+      return isAllowed ? origin : null
+    },
     allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Requested-With', 'Accept', 'Origin'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true,
+    maxAge: 86400, // Cache preflight response for 24 hours
   }))
-  
-  // Additional CORS debugging middleware for development
-  app.use('*', async (c, next) => {
-    const origin = c.req.header('Origin')
-    if (origin) {
-      c.header('Access-Control-Allow-Origin', origin)
-      c.header('Access-Control-Allow-Credentials', 'true')
-    }
-    await next()
-  })
 } else {
   console.log('🔒 Production mode: Using strict CORS settings')
   // Production CORS configuration
@@ -66,18 +85,38 @@ if (process.env.NODE_ENV === 'development') {
   }))
 }
 
-// Rate limiting - different limits for different endpoints
-app.use('/api/auth/login', rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
-  message: 'Too many login attempts, please try again later'
-}))
+// Rate limiting - different limits for different endpoints with audit logging
+if (process.env.NODE_ENV === 'development') {
+  console.log('🔧 Development mode: Using relaxed rate limits')
+  app.use('/api/auth/login', rateLimitAuditMiddleware())
+  app.use('/api/auth/login', rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 20, // 20 attempts per window in development
+    message: 'Too many login attempts, please try again later'
+  }))
 
-app.use('/api/*', rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window per IP
-  message: 'Too many requests, please slow down'
-}))
+  app.use('/api/*', rateLimitAuditMiddleware())
+  app.use('/api/*', rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    max: 500, // 500 requests per window per IP in development
+    message: 'Too many requests, please slow down'
+  }))
+} else {
+  console.log('🔒 Production mode: Using strict rate limits')
+  app.use('/api/auth/login', rateLimitAuditMiddleware())
+  app.use('/api/auth/login', rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 attempts per window in production
+    message: 'Too many login attempts, please try again later'
+  }))
+
+  app.use('/api/*', rateLimitAuditMiddleware())
+  app.use('/api/*', rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // 100 requests per window per IP in production
+    message: 'Too many requests, please slow down'
+  }))
+}
 
 // Input sanitization
 app.use('*', sanitizeInput())
@@ -134,7 +173,7 @@ app.onError((err, c) => {
   if (err.name === 'ZodError') {
     return c.json({
       error: 'Validation failed',
-      details: err.issues || err.errors
+      details: (err as any).issues || (err as any).errors || 'Validation failed'
     }, 400)
   }
 

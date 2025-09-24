@@ -14,7 +14,9 @@ const createUserSchema = insertUserSchema.omit({
   createdAt: true,
   updatedAt: true,
   isActive: true,
+  passwordHash: true,
 }).extend({
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   dateOfBirth: z.union([z.string(), z.date(), z.null()]).optional().nullable()
 })
 
@@ -22,7 +24,7 @@ const updateUserSchema = insertUserSchema.omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-  password: true,
+  passwordHash: true,
 }).extend({
   dateOfBirth: z.union([z.string(), z.date(), z.null()]).optional().nullable()
 }).partial()
@@ -72,7 +74,9 @@ usersRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', qu
 
     let conditions = []
     if (schoolFilter) conditions.push(schoolFilter)
-    if (role) conditions.push(eq(users.role, role))
+    if (role && ['super_admin', 'school_admin', 'teacher', 'student', 'parent'].includes(role)) {
+      conditions.push(eq(users.role, role as 'super_admin' | 'school_admin' | 'teacher' | 'student' | 'parent'))
+    }
     if (search) {
       conditions.push(
         or(
@@ -197,9 +201,10 @@ usersRouter.post('/', authMiddleware, async (c) => {
     const hashedPassword = await hashPassword(userData.password)
 
     // Create user
+    const { password, ...userDataWithoutPassword } = userData
     const newUser = await db.insert(users).values({
-      ...userData,
-      password: hashedPassword,
+      ...userDataWithoutPassword,
+      passwordHash: hashedPassword,
       dateOfBirth: userData.dateOfBirth instanceof Date ? userData.dateOfBirth : 
                    userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
     }).returning({

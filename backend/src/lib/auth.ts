@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { User } from '../db/schema'
+import { createRefreshToken, getDeviceInfo } from './refresh-token'
 
 export const hashPassword = async (password: string): Promise<string> => {
   const salt = await bcrypt.genSalt(12)
@@ -11,7 +12,7 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash)
 }
 
-export const generateToken = (user: Omit<User, 'password'>): string => {
+export const generateToken = (user: Omit<User, 'passwordHash'>): string => {
   const jwtSecret = process.env.JWT_SECRET
   if (!jwtSecret) {
     throw new Error('JWT_SECRET environment variable is not set')
@@ -25,7 +26,7 @@ export const generateToken = (user: Omit<User, 'password'>): string => {
       schoolId: user.schoolId,
     },
     jwtSecret,
-    { expiresIn: '24h' }
+    { expiresIn: '4h' }
   )
 }
 
@@ -48,4 +49,34 @@ export type JWTPayload = {
   email: string
   role: string
   schoolId?: string
+  iat?: number
+  exp?: number
+}
+
+export type AuthTokens = {
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
+}
+
+/**
+ * Generate both access and refresh tokens for a user
+ */
+export const generateAuthTokens = async (
+  user: Omit<User, 'passwordHash'>,
+  userAgent?: string,
+  ip?: string
+): Promise<AuthTokens> => {
+  // Generate access token
+  const accessToken = generateToken(user)
+  
+  // Generate refresh token
+  const deviceInfo = getDeviceInfo(userAgent, ip)
+  const { token: refreshToken } = await createRefreshToken(user.id, deviceInfo)
+  
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: 4 * 60 * 60 // 4 hours in seconds
+  }
 }

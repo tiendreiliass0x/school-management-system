@@ -1,35 +1,24 @@
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { Pool } from 'pg'
-import * as dotenv from 'dotenv'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import { migrate } from 'drizzle-orm/postgres-js/migrator'
+import postgres from 'postgres'
 
-// Load environment variables
-dotenv.config()
-
-const DATABASE_URL = process.env.DATABASE_URL
-
-if (!DATABASE_URL) {
-  console.error('❌ DATABASE_URL is not defined')
-  process.exit(1)
-}
+const DATABASE_URL = process.env.MAIN_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://localhost:5432/school_management_main'
 
 async function runMigrations() {
-  const pool = new Pool({
-    connectionString: DATABASE_URL,
-  })
-
-  const db = drizzle(pool)
-
   console.log('🔄 Running migrations...')
+  console.log('📍 Database URL:', DATABASE_URL.replace(/\/\/.*@/, '//***:***@'))
+
+  const migrationClient = postgres(DATABASE_URL, { max: 1 })
+  const db = drizzle(migrationClient)
   
   try {
-    await migrate(db, { migrationsFolder: './src/db/migrations' })
+    await migrate(db, { migrationsFolder: './drizzle' })
     console.log('✅ Migrations completed successfully')
   } catch (error) {
     console.error('❌ Migration failed:', error)
     process.exit(1)
   } finally {
-    await pool.end()
+    await migrationClient.end()
   }
 }
 

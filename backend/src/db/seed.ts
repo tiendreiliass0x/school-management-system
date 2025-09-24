@@ -1,25 +1,8 @@
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
-import * as dotenv from 'dotenv'
-import { schools, users, classes, academicYears } from './schema'
-
-// Load environment variables
-dotenv.config()
-
-const DATABASE_URL = process.env.DATABASE_URL
-
-if (!DATABASE_URL) {
-  console.error('❌ DATABASE_URL is not defined')
-  process.exit(1)
-}
+import { db } from './index'
+import { schools, users, classes, academicYears, enrollments } from './schema'
 
 async function seed() {
-  const pool = new Pool({
-    connectionString: DATABASE_URL,
-  })
-
-  const db = drizzle(pool)
 
   console.log('🌱 Starting database seeding...')
 
@@ -34,6 +17,8 @@ async function seed() {
         email: 'admin@demoschool.edu',
         website: 'https://demoschool.edu',
         description: 'A demonstration school for the School Management System',
+        principalName: 'Dr. Sarah Principal',
+        establishedYear: 2005,
       })
       .returning()
 
@@ -45,7 +30,7 @@ async function seed() {
       .insert(academicYears)
       .values({
         schoolId: demoSchool.id,
-        name: `${currentYear}-${currentYear + 1}`,
+        year: `${currentYear}-${currentYear + 1}`, // Changed from 'name' to 'year'
         startDate: new Date(`${currentYear}-09-01`),
         endDate: new Date(`${currentYear + 1}-06-30`),
         isActive: true,
@@ -100,6 +85,7 @@ async function seed() {
           role: 'teacher',
           schoolId: demoSchool.id,
           phone: '+1 (555) 234-5678',
+          address: '456 Teacher Lane, Education City',
           isActive: true,
         },
         {
@@ -110,6 +96,7 @@ async function seed() {
           role: 'teacher',
           schoolId: demoSchool.id,
           phone: '+1 (555) 345-6789',
+          address: '789 Educator Ave, Learning District',
           isActive: true,
         },
         {
@@ -120,6 +107,7 @@ async function seed() {
           role: 'teacher',
           schoolId: demoSchool.id,
           phone: '+1 (555) 456-7890',
+          address: '321 Faculty Street, Academic Town',
           isActive: true,
         },
       ])
@@ -140,6 +128,9 @@ async function seed() {
           role: 'student',
           schoolId: demoSchool.id,
           dateOfBirth: new Date('2010-03-15'),
+          address: '123 Student Lane, Learning City',
+          emergencyContact: 'Michael Davis',
+          emergencyPhone: '+1 (555) 567-8901',
           isActive: true,
         },
         {
@@ -150,6 +141,9 @@ async function seed() {
           role: 'student',
           schoolId: demoSchool.id,
           dateOfBirth: new Date('2010-07-22'),
+          address: '456 Pupil Drive, Education District',
+          emergencyContact: 'Sarah Wilson',
+          emergencyPhone: '+1 (555) 678-9012',
           isActive: true,
         },
         {
@@ -160,6 +154,9 @@ async function seed() {
           role: 'student',
           schoolId: demoSchool.id,
           dateOfBirth: new Date('2009-11-08'),
+          address: '789 Learner Street, Academic City',
+          emergencyContact: 'Robert Brown',
+          emergencyPhone: '+1 (555) 789-0123',
           isActive: true,
         },
         {
@@ -170,6 +167,9 @@ async function seed() {
           role: 'student',
           schoolId: demoSchool.id,
           dateOfBirth: new Date('2010-01-30'),
+          address: '321 Scholar Avenue, Study Town',
+          emergencyContact: 'Jennifer Taylor',
+          emergencyPhone: '+1 (555) 890-1234',
           isActive: true,
         },
         {
@@ -180,6 +180,9 @@ async function seed() {
           role: 'student',
           schoolId: demoSchool.id,
           dateOfBirth: new Date('2009-09-12'),
+          address: '654 Achiever Road, Knowledge Heights',
+          emergencyContact: 'David Anderson',
+          emergencyPhone: '+1 (555) 901-2345',
           isActive: true,
         },
       ])
@@ -197,10 +200,9 @@ async function seed() {
           academicYearId: academicYear.id,
           name: 'Mathematics 5A',
           description: 'Fifth grade mathematics curriculum',
-          gradeLevel: '5',
+          gradeLevel: 5, // Changed from string to integer
           capacity: 25,
           room: 'Room 101',
-          schedule: 'Monday, Wednesday, Friday 9:00-10:00 AM',
         },
         {
           schoolId: demoSchool.id,
@@ -208,10 +210,9 @@ async function seed() {
           academicYearId: academicYear.id,
           name: 'Science 5A',
           description: 'Fifth grade science curriculum',
-          gradeLevel: '5',
+          gradeLevel: 5, // Changed from string to integer
           capacity: 25,
           room: 'Room 102',
-          schedule: 'Tuesday, Thursday 10:00-11:00 AM',
         },
         {
           schoolId: demoSchool.id,
@@ -219,10 +220,9 @@ async function seed() {
           academicYearId: academicYear.id,
           name: 'English 5A',
           description: 'Fifth grade English language arts',
-          gradeLevel: '5',
+          gradeLevel: 5, // Changed from string to integer
           capacity: 25,
           room: 'Room 103',
-          schedule: 'Monday, Tuesday, Wednesday, Thursday 11:00 AM-12:00 PM',
         },
       ])
       .returning()
@@ -242,6 +242,7 @@ async function seed() {
           role: 'parent',
           schoolId: demoSchool.id,
           phone: '+1 (555) 567-8901',
+          address: '123 Student Lane, Learning City',
           isActive: true,
         },
         {
@@ -252,12 +253,34 @@ async function seed() {
           role: 'parent',
           schoolId: demoSchool.id,
           phone: '+1 (555) 678-9012',
+          address: '456 Pupil Drive, Education District',
           isActive: true,
         },
       ])
       .returning()
 
     console.log('✅ Created demo parents')
+
+    // Create student enrollments in classes
+    const enrollmentData = [
+      // Enroll first 3 students in Math class
+      { studentId: students[0].id, classId: demoClasses[0].id },
+      { studentId: students[1].id, classId: demoClasses[0].id },
+      { studentId: students[2].id, classId: demoClasses[0].id },
+      // Enroll last 3 students in Science class
+      { studentId: students[2].id, classId: demoClasses[1].id },
+      { studentId: students[3].id, classId: demoClasses[1].id },
+      { studentId: students[4].id, classId: demoClasses[1].id },
+      // Enroll all students in English class
+      { studentId: students[0].id, classId: demoClasses[2].id },
+      { studentId: students[1].id, classId: demoClasses[2].id },
+      { studentId: students[2].id, classId: demoClasses[2].id },
+      { studentId: students[3].id, classId: demoClasses[2].id },
+      { studentId: students[4].id, classId: demoClasses[2].id },
+    ]
+
+    await db.insert(enrollments).values(enrollmentData)
+    console.log('✅ Created student enrollments')
 
     console.log('\n🎉 Database seeding completed successfully!')
     console.log('\n📋 Demo Accounts Created:')
@@ -286,8 +309,6 @@ async function seed() {
   } catch (error) {
     console.error('❌ Seeding failed:', error)
     process.exit(1)
-  } finally {
-    await pool.end()
   }
 }
 

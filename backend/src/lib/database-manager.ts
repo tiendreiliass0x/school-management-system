@@ -1,6 +1,7 @@
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { schools, type NewSchool } from '../db/schema'
+import { eq } from 'drizzle-orm'
 
 interface DatabaseConfig {
   host: string
@@ -55,12 +56,13 @@ class DatabaseManager {
   }
 
   /**
-   * Validate school ID format to prevent SQL injection
+   * Validate school ID format to prevent SQL injection and ensure safety
    */
   private validateSchoolId(schoolId: string): boolean {
-    // Only allow alphanumeric characters, hyphens, and underscores
-    // Must be between 1-50 characters
-    return /^[a-zA-Z0-9_-]{1,50}$/.test(schoolId)
+    // Only allow alphanumeric characters and underscores (no hyphens for DB safety)
+    // Must be between 3-30 characters and start with a letter
+    // This ensures database names are always valid
+    return /^[a-zA-Z][a-zA-Z0-9_]{2,29}$/.test(schoolId)
   }
 
   /**
@@ -150,8 +152,17 @@ class DatabaseManager {
       const adminClient = this.getAdminClient()
       const dbName = this.sanitizeDatabaseName(schoolId)
       
-      // Use parameterized query to prevent SQL injection
-      await adminClient.unsafe(`CREATE DATABASE "${dbName}"`)
+      // Database names cannot be parameterized in SQL, but we use strict validation
+      // and escape any potential dangerous characters as additional safety
+      const safeDbName = dbName.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()
+      
+      // Validate the final database name one more time
+      if (!/^school_[a-zA-Z0-9_]{1,45}$/.test(safeDbName)) {
+        throw new Error('Invalid database name after sanitization')
+      }
+      
+      // Use template literal with postgres.js for safer execution
+      await adminClient.unsafe(`CREATE DATABASE "${safeDbName}"`)
       
       // 3. Run schema migrations on new database
       const schoolDb = this.getSchoolConnection(schoolId)
@@ -196,8 +207,14 @@ class DatabaseManager {
       const adminClient = this.getAdminClient()
       const dbName = this.sanitizeDatabaseName(schoolId)
       
-      // Use parameterized query for safety
-      await adminClient.unsafe(`DROP DATABASE IF EXISTS "${dbName}"`)
+      // Apply same strict validation as creation
+      const safeDbName = dbName.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()
+      if (!/^school_[a-zA-Z0-9_]{1,45}$/.test(safeDbName)) {
+        console.error('Invalid database name for cleanup:', safeDbName)
+        return // Don't attempt to drop invalid names
+      }
+      
+      await adminClient.unsafe(`DROP DATABASE IF EXISTS "${safeDbName}"`)
     } catch (cleanupError) {
       console.error('Failed to cleanup after school creation failure:', cleanupError)
       // Don't throw cleanup errors as they're secondary to the main error
@@ -220,7 +237,13 @@ class DatabaseManager {
       const adminClient = this.getAdminClient()
       const dbName = this.sanitizeDatabaseName(schoolId)
       
-      await adminClient.unsafe(`DROP DATABASE IF EXISTS "${dbName}"`)
+      // Apply same strict validation as creation
+      const safeDbName = dbName.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()
+      if (!/^school_[a-zA-Z0-9_]{1,45}$/.test(safeDbName)) {
+        throw new Error('Invalid database name for removal')
+      }
+      
+      await adminClient.unsafe(`DROP DATABASE IF EXISTS "${safeDbName}"`)
 
       // Clean up connection
       if (this.connections.has(schoolId)) {

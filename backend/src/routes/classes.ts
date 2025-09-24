@@ -71,7 +71,7 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
     }
 
     if (teacherId) conditions.push(eq(classes.teacherId, teacherId))
-    if (gradeLevel) conditions.push(eq(classes.gradeLevel, parseInt(gradeLevel)))
+    if (gradeLevel) conditions.push(eq(classes.gradeLevel, gradeLevel))
     if (academicYearId) conditions.push(eq(classes.academicYearId, academicYearId))
 
     if (conditions.length > 0) {

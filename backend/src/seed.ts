@@ -21,12 +21,12 @@ async function seed() {
     console.log('✅ Created school:', school.name)
 
     // Hash passwords for demo users
-    const password = await hashPassword('password')
+    const passwordHash = await hashPassword('password')
 
     // Create Super Admin
     const [superAdmin] = await db.insert(users).values({
       email: 'admin@school.com',
-      password,
+      passwordHash,
       firstName: 'Super',
       lastName: 'Admin',
       role: 'super_admin',
@@ -38,7 +38,7 @@ async function seed() {
     // Create School Admin
     const [schoolAdmin] = await db.insert(users).values({
       email: 'schooladmin@demo-elementary.edu',
-      password,
+      passwordHash,
       firstName: 'School',
       lastName: 'Administrator',
       role: 'school_admin',
@@ -52,7 +52,7 @@ async function seed() {
     // Create a Teacher
     const [teacher] = await db.insert(users).values({
       email: 'teacher@demo-elementary.edu',
-      password,
+      passwordHash,
       firstName: 'John',
       lastName: 'Teacher',
       role: 'teacher',
@@ -66,7 +66,7 @@ async function seed() {
     // Create a Student
     const [student] = await db.insert(users).values({
       email: 'student@demo-elementary.edu',
-      password,
+      passwordHash,
       firstName: 'Alice',
       lastName: 'Student',
       role: 'student',
@@ -80,7 +80,7 @@ async function seed() {
     // Create a Parent
     const [parent] = await db.insert(users).values({
       email: 'parent@demo-elementary.edu',
-      password,
+      passwordHash,
       firstName: 'Bob',
       lastName: 'Parent',
       role: 'parent',
