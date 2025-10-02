@@ -1,10 +1,12 @@
-import { pgTable, text, uuid, timestamp, integer, boolean, decimal, pgEnum, unique, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, uuid, timestamp, integer, boolean, decimal, pgEnum, unique, index, bigint } from 'drizzle-orm/pg-core'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { relations } from 'drizzle-orm'
+import { z } from 'zod'
 
 export const userRoleEnum = pgEnum('user_role', ['super_admin', 'school_admin', 'teacher', 'student', 'parent'])
 export const gradeStatusEnum = pgEnum('grade_status', ['draft', 'published'])
 export const academicTermEnum = pgEnum('academic_term', ['fall', 'spring', 'summer', 'full_year'])
+export const documentStatusEnum = pgEnum('document_status', ['pending', 'uploaded', 'failed'])
 
 export const schools = pgTable('schools', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -164,6 +166,29 @@ export const refreshTokens = pgTable('refresh_tokens', {
   tokenHashIdx: unique('refresh_tokens_token_hash_unique').on(table.tokenHash),
 }))
 
+export const documents = pgTable('documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  schoolId: uuid('school_id').notNull().references(() => schools.id),
+  uploaderId: uuid('uploader_id').notNull().references(() => users.id),
+  title: text('title').notNull(),
+  fileName: text('file_name').notNull(),
+  contentType: text('content_type'),
+  fileSize: bigint('file_size', { mode: 'number' }).notNull(),
+  description: text('description'),
+  s3Bucket: text('s3_bucket').notNull(),
+  s3Key: text('s3_key').notNull(),
+  status: documentStatusEnum('status').default('uploaded').notNull(),
+  checksum: text('checksum'),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  schoolIdx: index('documents_school_idx').on(table.schoolId),
+  uploaderIdx: index('documents_uploader_idx').on(table.uploaderId),
+  statusIdx: index('documents_status_idx').on(table.status),
+  s3KeyIdx: unique('documents_s3_key_unique').on(table.s3Key),
+}))
+
 // Relations
 export const schoolsRelations = relations(schools, ({ many }) => ({
   users: many(users),
@@ -266,6 +291,17 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
   }),
 }))
 
+export const documentsRelations = relations(documents, ({ one }) => ({
+  school: one(schools, {
+    fields: [documents.schoolId],
+    references: [schools.id],
+  }),
+  uploader: one(users, {
+    fields: [documents.uploaderId],
+    references: [users.id],
+  }),
+}))
+
 // Zod schemas for validation
 export const insertSchoolSchema = createInsertSchema(schools)
 export const selectSchoolSchema = createSelectSchema(schools)
@@ -294,6 +330,13 @@ export const selectAttendanceSchema = createSelectSchema(attendance)
 export const insertRefreshTokenSchema = createInsertSchema(refreshTokens)
 export const selectRefreshTokenSchema = createSelectSchema(refreshTokens)
 
+export const insertDocumentSchema = createInsertSchema(documents, {
+  fileSize: z.number().int().nonnegative(),
+})
+export const selectDocumentSchema = createSelectSchema(documents, {
+  fileSize: z.number().int().nonnegative(),
+})
+
 // Type exports
 export type School = typeof schools.$inferSelect
 export type NewSchool = typeof schools.$inferInsert
@@ -321,3 +364,6 @@ export type NewAttendance = typeof attendance.$inferInsert
 
 export type RefreshToken = typeof refreshTokens.$inferSelect
 export type NewRefreshToken = typeof refreshTokens.$inferInsert
+
+export type Document = typeof documents.$inferSelect
+export type NewDocument = typeof documents.$inferInsert
