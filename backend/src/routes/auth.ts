@@ -7,7 +7,7 @@ import { users, insertUserSchema } from '../db/schema'
 import { hashPassword, verifyPassword, generateToken, generateAuthTokens } from '../lib/auth'
 import { passwordSchema, validatePassword } from '../lib/password-validation'
 import { verifyRefreshToken, revokeRefreshToken, revokeAllUserTokens } from '../lib/refresh-token'
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, requireRole } from '../middleware/auth'
 import { auditLogger } from '../lib/audit-logger'
 
 const auth = new Hono()
@@ -130,14 +130,31 @@ auth.post('/login', zValidator('json', loginSchema), async (c) => {
 })
 
 // Register (admin only for creating accounts)
-auth.post('/register', zValidator('json', registerSchema), async (c) => {
+auth.post('/register', authMiddleware, requireRole('super_admin', 'school_admin'), zValidator('json', registerSchema), async (c) => {
   try {
+    const currentUser = c.get('user')
     const userData = c.req.valid('json')
+
+    // Only super admins can create super admin accounts
+    if (userData.role === 'super_admin' && currentUser.role !== 'super_admin') {
+      return c.json({ error: 'Insufficient permissions to create super admin accounts' }, 403)
+    }
+
+    // Non super admins can only create users within their own school context
+    if (currentUser.role !== 'super_admin') {
+      if (!currentUser.schoolId) {
+        return c.json({ error: 'Your account is not linked to a school. Contact a system administrator.' }, 403)
+      }
+
+      if (!userData.schoolId || userData.schoolId !== currentUser.schoolId) {
+        return c.json({ error: 'You can only create accounts for your own school' }, 403)
+      }
+    }
 
     // Additional password validation with detailed feedback
     const passwordValidation = validatePassword(userData.password)
     if (!passwordValidation.isValid) {
-      return c.json({ 
+      return c.json({
         error: 'Password validation failed',
         details: passwordValidation.errors,
         strength: passwordValidation.strength

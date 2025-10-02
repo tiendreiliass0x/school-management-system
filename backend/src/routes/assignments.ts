@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { eq, and, or, count } from 'drizzle-orm'
+import { eq, and, count } from 'drizzle-orm'
 import { db } from '../db'
 import { assignments, classes, users, grades, insertAssignmentSchema } from '../db/schema'
 import { authMiddleware, requireRole, requireSchoolAccess } from '../middleware/auth'
@@ -34,7 +34,9 @@ assignmentsRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('quer
     const limitNum = parseInt(limit)
     const offset = (pageNum - 1) * limitNum
 
-    let query = db.select({
+    const conditions: ReturnType<typeof eq>[] = []
+
+    const baseQuery = db.select({
       id: assignments.id,
       classId: assignments.classId,
       title: assignments.title,
@@ -51,8 +53,6 @@ assignmentsRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('quer
     }).from(assignments)
       .leftJoin(classes, eq(assignments.classId, classes.id))
       .leftJoin(users, eq(classes.teacherId, users.id))
-
-    let conditions = []
     
     // Filter by school access
     if (currentUser.role !== 'super_admin') {
@@ -67,19 +67,21 @@ assignmentsRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('quer
 
     if (classId) conditions.push(eq(assignments.classId, classId))
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions))
-    }
+    const filters = conditions.length > 0 ? and(...conditions) : undefined
 
-    const assignmentsList = await query.offset(offset).limit(limitNum).orderBy(assignments.createdAt)
+    const assignmentsListQuery = filters ? baseQuery.where(filters) : baseQuery
+
+    const assignmentsList = await assignmentsListQuery
+      .offset(offset)
+      .limit(limitNum)
+      .orderBy(assignments.createdAt)
 
     // Get total count
-    let countQuery = db.select({ count: count() }).from(assignments)
+    const countBaseQuery = db.select({ count: count() }).from(assignments)
       .leftJoin(classes, eq(assignments.classId, classes.id))
-    
-    if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions))
-    }
+
+    const countQuery = filters ? countBaseQuery.where(filters) : countBaseQuery
+
     const [{ count: total }] = await countQuery
 
     return c.json({
@@ -135,7 +137,16 @@ assignmentsRouter.get('/:id', authMiddleware, async (c) => {
     }
 
     // Get grades for this assignment (if teacher or admin)
-    let gradesData = []
+    let gradesData: Array<{
+      gradeId: string
+      studentId: string
+      studentName: string
+      studentLastName: string
+      points: string | null
+      feedback: string | null
+      status: 'draft' | 'published'
+      gradedAt: Date | null
+    }> = []
     if (currentUser.role === 'teacher' || 
         currentUser.role === 'school_admin' || 
         currentUser.role === 'super_admin') {

@@ -35,7 +35,9 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
     const limitNum = parseInt(limit)
     const offset = (pageNum - 1) * limitNum
 
-    let query = db.select({
+    const conditions: Parameters<typeof and> = []
+
+    const baseQuery = db.select({
       id: classes.id,
       schoolId: classes.schoolId,
       academicYearId: classes.academicYearId,
@@ -52,8 +54,6 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
       teacherName: users.firstName,
       teacherLastName: users.lastName,
     }).from(classes).leftJoin(users, eq(classes.teacherId, users.id))
-
-    let conditions = []
     
     // School filter
     if (currentUser.role !== 'super_admin') {
@@ -71,20 +71,26 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
     }
 
     if (teacherId) conditions.push(eq(classes.teacherId, teacherId))
-    if (gradeLevel) conditions.push(eq(classes.gradeLevel, gradeLevel))
+    if (gradeLevel) {
+      const parsedGradeLevel = Number.parseInt(gradeLevel, 10)
+      if (!Number.isNaN(parsedGradeLevel)) {
+        conditions.push(eq(classes.gradeLevel, parsedGradeLevel))
+      }
+    }
     if (academicYearId) conditions.push(eq(classes.academicYearId, academicYearId))
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions))
-    }
+    const filters = conditions.length > 0 ? and(...conditions) : undefined
 
-    const classList = await query.offset(offset).limit(limitNum).orderBy(classes.name)
+    const classListQuery = filters ? baseQuery.where(filters) : baseQuery
+
+    const classList = await classListQuery.offset(offset).limit(limitNum).orderBy(classes.name)
 
     // Get total count
-    let countQuery = db.select({ count: count() }).from(classes)
-    if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions))
-    }
+    const countBaseQuery = db
+      .select({ count: count() })
+      .from(classes)
+      .leftJoin(users, eq(classes.teacherId, users.id))
+    const countQuery = filters ? countBaseQuery.where(filters) : countBaseQuery
     const [{ count: total }] = await countQuery
 
     return c.json({
