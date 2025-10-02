@@ -47,7 +47,7 @@ usersRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', qu
     const limitNum = parseInt(limit)
     const offset = (pageNum - 1) * limitNum
 
-    let query = db.select({
+    const baseQuery = db.select({
       id: users.id,
       email: users.email,
       firstName: users.firstName,
@@ -72,7 +72,7 @@ usersRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', qu
       schoolFilter = eq(users.schoolId, currentUser.schoolId!)
     }
 
-    let conditions = []
+    const conditions: Parameters<typeof and> = []
     if (schoolFilter) conditions.push(schoolFilter)
     if (role && ['super_admin', 'school_admin', 'teacher', 'student', 'parent'].includes(role)) {
       conditions.push(eq(users.role, role as 'super_admin' | 'school_admin' | 'teacher' | 'student' | 'parent'))
@@ -87,17 +87,15 @@ usersRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', qu
       )
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions))
-    }
+    const filters = conditions.length > 0 ? and(...conditions) : undefined
 
-    const usersList = await query.offset(offset).limit(limitNum).orderBy(users.createdAt)
+    const usersListQuery = filters ? baseQuery.where(filters) : baseQuery
+
+    const usersList = await usersListQuery.offset(offset).limit(limitNum).orderBy(users.createdAt)
 
     // Get total count for pagination
-    let countQuery = db.select({ count: count() }).from(users)
-    if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions))
-    }
+    const countBaseQuery = db.select({ count: count() }).from(users)
+    const countQuery = filters ? countBaseQuery.where(filters) : countBaseQuery
     const [{ count: total }] = await countQuery
 
     return c.json({
@@ -159,15 +157,13 @@ usersRouter.get('/:id', authMiddleware, async (c) => {
 usersRouter.post('/', authMiddleware, async (c) => {
   try {
     const rawBody = await c.req.json()
-    console.log('Raw request body:', JSON.stringify(rawBody, null, 2))
-    
+
     // Validate with zod manually to get better error messages
     const result = createUserSchema.safeParse(rawBody)
     if (!result.success) {
-      console.log('Validation errors:', result.error.issues)
-      return c.json({ 
-        error: 'Validation failed', 
-        details: result.error.issues 
+      return c.json({
+        error: 'Validation failed',
+        details: result.error.issues
       }, 400)
     }
     

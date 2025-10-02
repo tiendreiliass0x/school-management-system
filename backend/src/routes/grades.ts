@@ -35,7 +35,9 @@ gradesRouter.get('/', authMiddleware, requireSchoolAccess, async (c) => {
     const assignmentId = c.req.query('assignmentId')
     const studentId = c.req.query('studentId')
     
-    let query = db.select({
+    const conditions: Parameters<typeof and> = []
+
+    const baseQuery = db.select({
       id: grades.id,
       studentId: grades.studentId,
       assignmentId: grades.assignmentId,
@@ -54,8 +56,6 @@ gradesRouter.get('/', authMiddleware, requireSchoolAccess, async (c) => {
       .innerJoin(users, eq(grades.studentId, users.id))
       .innerJoin(assignments, eq(grades.assignmentId, assignments.id))
       .innerJoin(classes, eq(assignments.classId, classes.id))
-
-    let conditions = []
     
     // School access filter
     if (currentUser.role !== 'super_admin') {
@@ -78,11 +78,11 @@ gradesRouter.get('/', authMiddleware, requireSchoolAccess, async (c) => {
       conditions.push(eq(grades.studentId, studentId))
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions))
-    }
+    const filters = conditions.length > 0 ? and(...conditions) : undefined
 
-    const gradesList = await query.orderBy(grades.createdAt)
+    const gradesListQuery = filters ? baseQuery.where(filters) : baseQuery
+
+    const gradesList = await gradesListQuery.orderBy(grades.createdAt)
 
     return c.json({ grades: gradesList })
   } catch (error) {
@@ -188,12 +188,22 @@ gradesRouter.post('/', authMiddleware, async (c) => {
       ))
       .limit(1)
 
+    const normalizedPoints =
+      gradeData.points === null || gradeData.points === undefined
+        ? null
+        : String(gradeData.points)
+
+    const persistencePayload = {
+      ...gradeData,
+      points: normalizedPoints,
+    }
+
     let savedGrade
     if (existingGrade.length > 0) {
       // Update existing grade
       savedGrade = await db.update(grades)
         .set({
-          ...gradeData,
+          ...persistencePayload,
           gradedAt: new Date(),
           gradedBy: currentUser.id,
           updatedAt: new Date(),
@@ -203,7 +213,7 @@ gradesRouter.post('/', authMiddleware, async (c) => {
     } else {
       // Create new grade
       savedGrade = await db.insert(grades).values({
-        ...gradeData,
+        ...persistencePayload,
         gradedAt: new Date(),
         gradedBy: currentUser.id,
       }).returning()
@@ -276,6 +286,10 @@ gradesRouter.post('/bulk', authMiddleware, async (c) => {
         savedGrade = await db.update(grades)
           .set({
             ...gradeData,
+            points:
+              gradeData.points === null || gradeData.points === undefined
+                ? null
+                : String(gradeData.points),
             assignmentId,
             gradedAt: new Date(),
             gradedBy: currentUser.id,
@@ -287,6 +301,10 @@ gradesRouter.post('/bulk', authMiddleware, async (c) => {
         // Create new grade
         savedGrade = await db.insert(grades).values({
           ...gradeData,
+          points:
+            gradeData.points === null || gradeData.points === undefined
+              ? null
+              : String(gradeData.points),
           assignmentId,
           gradedAt: new Date(),
           gradedBy: currentUser.id,

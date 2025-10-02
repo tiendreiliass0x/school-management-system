@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { eq, and, lt } from 'drizzle-orm'
+import { eq, and, lt, gt } from 'drizzle-orm'
 import { db } from '../db'
 import { refreshTokens, users, type RefreshToken, type NewRefreshToken } from '../db/schema'
 
@@ -74,7 +74,7 @@ export const verifyRefreshToken = async (
       and(
         eq(refreshTokens.tokenHash, tokenHash),
         eq(refreshTokens.isRevoked, false),
-        lt(new Date(), refreshTokens.expiresAt) // Not expired
+        gt(refreshTokens.expiresAt, new Date()) // Not expired
       )
     )
     .limit(1)
@@ -217,7 +217,7 @@ export const getUserActiveTokens = async (userId: string): Promise<RefreshToken[
       and(
         eq(refreshTokens.userId, userId),
         eq(refreshTokens.isRevoked, false),
-        lt(new Date(), refreshTokens.expiresAt)
+        gt(refreshTokens.expiresAt, new Date())
       )
     )
     .orderBy(refreshTokens.lastUsedAt)
