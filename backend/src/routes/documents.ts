@@ -10,7 +10,24 @@ import { documentProcessor } from '../lib/document-processor'
 import { db } from '../db'
 import { documents } from '../db/schema'
 
-const documentsRouter = new Hono()
+type DocumentsRouterDependencies = {
+  authMiddleware: typeof authMiddleware
+  requireSchoolAccess: typeof requireSchoolAccess
+  documentProcessor: typeof documentProcessor
+  db: typeof db
+  documentsTable: typeof documents
+}
+
+const createDependencies = (
+  overrides: Partial<DocumentsRouterDependencies>
+): DocumentsRouterDependencies => ({
+  authMiddleware,
+  requireSchoolAccess,
+  documentProcessor,
+  db,
+  documentsTable: documents,
+  ...overrides,
+})
 
 const listQuerySchema = z.object({
   page: z.string().optional().default('1'),
@@ -68,202 +85,220 @@ const safeParseMetadata = (metadata: string): Record<string, unknown> | null => 
   return null
 }
 
-documentsRouter.get(
-  '/',
-  authMiddleware,
-  requireSchoolAccess,
-  zValidator('query', listQuerySchema),
-  async (c) => {
+export const createDocumentsRouter = (
+  overrides: Partial<DocumentsRouterDependencies> = {}
+) => {
+  const {
+    authMiddleware: authMw,
+    requireSchoolAccess: requireSchoolAccessMw,
+    documentProcessor: processor,
+    db: database,
+    documentsTable,
+  } = createDependencies(overrides)
+
+  const router = new Hono()
+
+  router.get(
+    '/',
+    authMw,
+    requireSchoolAccessMw,
+    zValidator('query', listQuerySchema),
+    async (c) => {
+      try {
+        const { page, limit, schoolId, uploaderId, search } = c.req.valid('query')
+        const currentUser = c.get('user')
+
+        const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1)
+        const limitNumber = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20))
+        const offset = (pageNumber - 1) * limitNumber
+
+        const filters: SQL[] = []
+
+        let effectiveSchoolId: string | undefined
+        if (currentUser.role === 'super_admin') {
+          effectiveSchoolId = schoolId
+        } else {
+          effectiveSchoolId = currentUser.schoolId
+        }
+
+        if (!effectiveSchoolId) {
+          return c.json({ error: 'A schoolId is required to list documents' }, 400)
+        }
+
+        filters.push(eq(documentsTable.schoolId, effectiveSchoolId))
+
+        if (uploaderId) {
+          filters.push(eq(documentsTable.uploaderId, uploaderId))
+        }
+
+        if (search && search.trim().length) {
+          const pattern = `%${search.trim()}%`
+          const searchFilter = or(
+            ilike(documentsTable.title, pattern),
+            ilike(documentsTable.fileName, pattern)
+          )
+
+          if (searchFilter) {
+            filters.push(searchFilter)
+          }
+        }
+
+        const whereClause = filters.length === 1 ? filters[0] : and(...filters)
+
+        const items = await database
+          .select()
+          .from(documentsTable)
+          .where(whereClause)
+          .orderBy(desc(documentsTable.createdAt))
+          .limit(limitNumber)
+          .offset(offset)
+
+        const [{ count: total }] = await database
+          .select({ count: count() })
+          .from(documentsTable)
+          .where(whereClause)
+
+        const parsedItems = items.map((item) => ({
+          ...item,
+          metadata: item.metadata ? safeParseMetadata(item.metadata) : null,
+        }))
+
+        return c.json({
+          documents: parsedItems,
+          pagination: {
+            page: pageNumber,
+            limit: limitNumber,
+            total,
+            pages: Math.ceil(total / limitNumber),
+          },
+        })
+      } catch (error) {
+        console.error('List documents error:', error)
+        return c.json({ error: 'Internal server error' }, 500)
+      }
+    }
+  )
+
+  router.get('/:id', authMw, requireSchoolAccessMw, async (c) => {
     try {
-      const { page, limit, schoolId, uploaderId, search } = c.req.valid('query')
+      const id = c.req.param('id')
       const currentUser = c.get('user')
 
-      const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1)
-      const limitNumber = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20))
-      const offset = (pageNumber - 1) * limitNumber
-
-      const filters: SQL[] = []
-
-      let effectiveSchoolId: string | undefined
-      if (currentUser.role === 'super_admin') {
-        effectiveSchoolId = schoolId
-      } else {
-        effectiveSchoolId = currentUser.schoolId
-      }
-
-      if (!effectiveSchoolId) {
-        return c.json({ error: 'A schoolId is required to list documents' }, 400)
-      }
-
-      filters.push(eq(documents.schoolId, effectiveSchoolId))
-
-      if (uploaderId) {
-        filters.push(eq(documents.uploaderId, uploaderId))
-      }
-
-      if (search && search.trim().length) {
-        const pattern = `%${search.trim()}%`
-        const searchFilter = or(
-          ilike(documents.title, pattern),
-          ilike(documents.fileName, pattern)
-        )
-
-        if (searchFilter) {
-          filters.push(searchFilter)
-        }
-      }
-
-      const whereClause = filters.length === 1 ? filters[0] : and(...filters)
-
-      const items = await db
+      const documentRecords = await database
         .select()
-        .from(documents)
-        .where(whereClause)
-        .orderBy(desc(documents.createdAt))
-        .limit(limitNumber)
-        .offset(offset)
+        .from(documentsTable)
+        .where(eq(documentsTable.id, id))
+        .limit(1)
 
-      const [{ count: total }] = await db
-        .select({ count: count() })
-        .from(documents)
-        .where(whereClause)
+      if (!documentRecords.length) {
+        return c.json({ error: 'Document not found' }, 404)
+      }
 
-      const parsedItems = items.map((item) => ({
-        ...item,
-        metadata: item.metadata ? safeParseMetadata(item.metadata) : null,
-      }))
+      const documentRecord = documentRecords[0]
+
+      if (currentUser.role !== 'super_admin' && currentUser.schoolId !== documentRecord.schoolId) {
+        return c.json({ error: 'Access denied' }, 403)
+      }
 
       return c.json({
-        documents: parsedItems,
-        pagination: {
-          page: pageNumber,
-          limit: limitNumber,
-          total,
-          pages: Math.ceil(total / limitNumber),
+        document: {
+          ...documentRecord,
+          metadata: documentRecord.metadata ? safeParseMetadata(documentRecord.metadata) : null,
         },
       })
     } catch (error) {
-      console.error('List documents error:', error)
+      console.error('Get document error:', error)
       return c.json({ error: 'Internal server error' }, 500)
     }
-  }
-)
+  })
 
-documentsRouter.get('/:id', authMiddleware, requireSchoolAccess, async (c) => {
-  try {
-    const id = c.req.param('id')
-    const currentUser = c.get('user')
+  router.post('/', authMw, requireSchoolAccessMw, async (c) => {
+    try {
+      const body = (await c.req.parseBody()) as Record<string, unknown>
+      const file = body.file as ParsedFile | undefined
+      const currentUser = c.get('user')
 
-    const documentRecords = await db
-      .select()
-      .from(documents)
-      .where(eq(documents.id, id))
-      .limit(1)
+      if (!file || typeof file.arrayBuffer !== 'function') {
+        return c.json({ error: 'A file upload is required under the "file" field' }, 400)
+      }
 
-    if (!documentRecords.length) {
-      return c.json({ error: 'Document not found' }, 404)
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+
+      const originalName = typeof file.name === 'string' && file.name.length > 0 ? file.name : 'document'
+      const contentType = typeof file.type === 'string' && file.type.length > 0 ? file.type : null
+
+      const title = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : null
+      const description =
+        typeof body.description === 'string' && body.description.trim().length > 0
+          ? body.description.trim()
+          : null
+
+      const metadata = parseRecord(body.metadata)
+      const tagsRecord = parseRecord(body.tags)
+      const tags = tagsRecord
+        ? Object.fromEntries(
+            Object.entries(tagsRecord)
+              .filter(([, value]) => value !== undefined && value !== null)
+              .map(([key, value]) => [key, String(value)])
+              .filter(([, value]) => value.length > 0)
+          )
+        : undefined
+
+      let schoolId: string | undefined
+      if (currentUser.role === 'super_admin') {
+        schoolId = typeof body.schoolId === 'string' && body.schoolId.length > 0 ? body.schoolId : undefined
+      } else {
+        schoolId = currentUser.schoolId
+      }
+
+      if (!schoolId) {
+        return c.json({ error: 'A schoolId is required to upload documents' }, 400)
+      }
+
+      const uploadResult = await processor.upload({
+        buffer,
+        originalName,
+        contentType,
+        uploaderId: currentUser.id,
+        schoolId,
+        title,
+        description,
+        metadata,
+        tags,
+      })
+
+      return c.json({
+        document: {
+          ...uploadResult.document,
+          metadata: uploadResult.document.metadata
+            ? safeParseMetadata(uploadResult.document.metadata)
+            : null,
+        },
+        location: uploadResult.location,
+      })
+    } catch (error) {
+      console.error('Upload document error:', error)
+      const isClientError =
+        error instanceof Error &&
+        (error.message.toLowerCase().includes('content type') ||
+          error.message.toLowerCase().includes('document is empty') ||
+          error.message.toLowerCase().includes('maximum allowed size') ||
+          error.message.toLowerCase().includes('metadata payload') ||
+          error.message.toLowerCase().includes('schoolid is required'))
+
+      return c.json(
+        {
+          error: error instanceof Error ? error.message : 'Failed to upload document',
+        },
+        isClientError ? 400 : 500
+      )
     }
+  })
 
-    const documentRecord = documentRecords[0]
+  return router
+}
 
-    if (currentUser.role !== 'super_admin' && currentUser.schoolId !== documentRecord.schoolId) {
-      return c.json({ error: 'Access denied' }, 403)
-    }
-
-    return c.json({
-      document: {
-        ...documentRecord,
-        metadata: documentRecord.metadata ? safeParseMetadata(documentRecord.metadata) : null,
-      },
-    })
-  } catch (error) {
-    console.error('Get document error:', error)
-    return c.json({ error: 'Internal server error' }, 500)
-  }
-})
-
-documentsRouter.post('/', authMiddleware, requireSchoolAccess, async (c) => {
-  try {
-    const body = (await c.req.parseBody()) as Record<string, unknown>
-    const file = body.file as ParsedFile | undefined
-    const currentUser = c.get('user')
-
-    if (!file || typeof file.arrayBuffer !== 'function') {
-      return c.json({ error: 'A file upload is required under the "file" field' }, 400)
-    }
-
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    const originalName = typeof file.name === 'string' && file.name.length > 0 ? file.name : 'document'
-    const contentType = typeof file.type === 'string' && file.type.length > 0 ? file.type : null
-
-    const title = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : null
-    const description =
-      typeof body.description === 'string' && body.description.trim().length > 0
-        ? body.description.trim()
-        : null
-
-    const metadata = parseRecord(body.metadata)
-    const tagsRecord = parseRecord(body.tags)
-    const tags = tagsRecord
-      ? Object.fromEntries(
-          Object.entries(tagsRecord)
-            .filter(([, value]) => value !== undefined && value !== null)
-            .map(([key, value]) => [key, String(value)])
-            .filter(([, value]) => value.length > 0)
-        )
-      : undefined
-
-    let schoolId: string | undefined
-    if (currentUser.role === 'super_admin') {
-      schoolId = typeof body.schoolId === 'string' && body.schoolId.length > 0 ? body.schoolId : undefined
-    } else {
-      schoolId = currentUser.schoolId
-    }
-
-    if (!schoolId) {
-      return c.json({ error: 'A schoolId is required to upload documents' }, 400)
-    }
-
-    const uploadResult = await documentProcessor.upload({
-      buffer,
-      originalName,
-      contentType,
-      uploaderId: currentUser.id,
-      schoolId,
-      title,
-      description,
-      metadata,
-      tags,
-    })
-
-    return c.json({
-      document: {
-        ...uploadResult.document,
-        metadata: uploadResult.document.metadata
-          ? safeParseMetadata(uploadResult.document.metadata)
-          : null,
-      },
-      location: uploadResult.location,
-    })
-  } catch (error) {
-    console.error('Upload document error:', error)
-    const isClientError =
-      error instanceof Error &&
-      (error.message.toLowerCase().includes('content type') ||
-        error.message.toLowerCase().includes('document is empty') ||
-        error.message.toLowerCase().includes('maximum allowed size') ||
-        error.message.toLowerCase().includes('metadata payload') ||
-        error.message.toLowerCase().includes('schoolid is required'))
-
-    return c.json(
-      {
-        error: error instanceof Error ? error.message : 'Failed to upload document',
-      },
-      isClientError ? 400 : 500
-    )
-  }
-})
+const documentsRouter = createDocumentsRouter()
 
 export default documentsRouter
