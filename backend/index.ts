@@ -10,6 +10,7 @@ import usersRoutes from './src/routes/users'
 import classesRoutes from './src/routes/classes'
 import assignmentsRoutes from './src/routes/assignments'
 import gradesRoutes from './src/routes/grades'
+import documentsRoutes from './src/routes/documents'
 
 import { 
   rateLimit, 
@@ -157,6 +158,7 @@ app.route('/api/users', usersRoutes)
 app.route('/api/classes', classesRoutes)
 app.route('/api/assignments', assignmentsRoutes)
 app.route('/api/grades', gradesRoutes)
+app.route('/api/documents', documentsRoutes)
 
 // Global error handler
 app.onError((err, c) => {
