@@ -133,7 +133,7 @@ class DocumentProcessor {
   }
 
   private createChecksum(buffer: Buffer) {
-    return createHash('sha256').update(buffer).digest('hex')
+    return createHash('sha256').update(buffer).digest('base64')
   }
 
   public async upload(input: DocumentUploadInput): Promise<DocumentUploadResult> {
