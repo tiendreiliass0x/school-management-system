@@ -196,3 +196,67 @@ The backend build process integrates with the frontend deployment:
 4. **Nginx routes** requests appropriately
 
 This ensures optimal performance and reliable deployments across the entire application stack.
+## Frontend Production Build
+
+### Quick Start
+```bash
+# Navigate to frontend
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run type checking and linting (optional but recommended)
+npm run typecheck
+npm run lint
+
+# Create the production build
+npm run build
+
+# Preview the production server locally
+npm run start
+```
+
+### Docker Build
+
+The frontend Dockerfile produces a minimal production image using Next.js standalone output:
+
+```dockerfile
+FROM node:20-alpine AS deps
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
+
+FROM node:20-alpine AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+CMD ["node", "server.js"]
+```
+
+### Build Features
+
+- ✅ **Next.js 14 App Router** with server components and streaming support.
+- ✅ **Standalone output** for fast boot times and smaller Docker images.
+- ✅ **Health check route** at `/api/health` for container orchestration probes.
+- ✅ **Environment-driven configuration** via `NEXT_PUBLIC_*` variables consumed by the UI.
+
+### Testing the Production Build
+
+```bash
+cd frontend
+npm run build
+npm run start
+
+# In another terminal
+curl http://localhost:3000/api/health
+```
+
+### Troubleshooting
+
+- **Missing dependencies**: ensure `npm install` completed successfully before building.
+- **Backend unavailable**: the dashboard gracefully handles offline API responses; confirm `NEXT_PUBLIC_API_URL` is correct.
+- **Docker build fails**: confirm that environment variables referenced in `next.config.mjs` are defined during build time.
