@@ -9,6 +9,7 @@ import { passwordSchema, validatePassword } from '../lib/password-validation'
 import { verifyRefreshToken, revokeRefreshToken, revokeAllUserTokens } from '../lib/refresh-token'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { auditLogger } from '../lib/audit-logger'
+import { generateStudentNumber, isValidStudentNumber } from '../lib/student-id'
 
 const auth = new Hono()
 
@@ -25,6 +26,7 @@ const registerSchema = insertUserSchema.omit({
   passwordHash: true,
 }).extend({
   password: passwordSchema,
+  studentNumber: z.string().regex(/^\d{6}$/, 'Student ID must be a 6-digit number').optional().nullable(),
 })
 
 const changePasswordSchema = z.object({
@@ -171,11 +173,35 @@ auth.post('/register', authMiddleware, requireRole('super_admin', 'school_admin'
     // Hash password
     const hashedPassword = await hashPassword(userData.password)
 
+    // Determine student number assignment
+    let studentNumber = userData.studentNumber ?? null
+    if (userData.role === 'student') {
+      if (studentNumber) {
+        if (!isValidStudentNumber(studentNumber)) {
+          return c.json({ error: 'Student ID must be a 6-digit number' }, 400)
+        }
+
+        const existingStudentNumber = await db.select({ id: users.id })
+          .from(users)
+          .where(eq(users.studentNumber, studentNumber))
+          .limit(1)
+
+        if (existingStudentNumber.length) {
+          return c.json({ error: 'Student ID already in use' }, 409)
+        }
+      } else {
+        studentNumber = await generateStudentNumber()
+      }
+    } else {
+      studentNumber = null
+    }
+
     // Create user
     const { password, ...userDataWithoutPassword } = userData
     const newUser = await db.insert(users).values({
       ...userDataWithoutPassword,
       passwordHash: hashedPassword,
+      studentNumber,
     }).returning()
 
     const { passwordHash: _, ...userWithoutPassword } = newUser[0]
@@ -201,6 +227,7 @@ auth.get('/me', authMiddleware, async (c) => {
       firstName: users.firstName,
       lastName: users.lastName,
       role: users.role,
+      studentNumber: users.studentNumber,
       schoolId: users.schoolId,
       phone: users.phone,
       dateOfBirth: users.dateOfBirth,

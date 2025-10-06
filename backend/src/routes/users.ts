@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { eq, and, or, ilike, count } from 'drizzle-orm'
+import { eq, and, or, ilike, count, ne } from 'drizzle-orm'
 import { db } from '../db'
-import { users, insertUserSchema, schools } from '../db/schema'
+import { users, insertUserSchema } from '../db/schema'
 import { hashPassword } from '../lib/auth'
 import { authMiddleware, requireRole, requireSchoolAccess } from '../middleware/auth'
+import { generateStudentNumber, isValidStudentNumber } from '../lib/student-id'
 
 const usersRouter = new Hono()
 
@@ -17,6 +18,7 @@ const createUserSchema = insertUserSchema.omit({
   passwordHash: true,
 }).extend({
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  studentNumber: z.string().regex(/^\d{6}$/, 'Student ID must be a 6-digit number').optional().nullable(),
   dateOfBirth: z.union([z.string(), z.date(), z.null()]).optional().nullable()
 })
 
@@ -26,6 +28,7 @@ const updateUserSchema = insertUserSchema.omit({
   updatedAt: true,
   passwordHash: true,
 }).extend({
+  studentNumber: z.string().regex(/^\d{6}$/, 'Student ID must be a 6-digit number').optional().nullable(),
   dateOfBirth: z.union([z.string(), z.date(), z.null()]).optional().nullable()
 }).partial()
 
@@ -53,6 +56,7 @@ usersRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', qu
       firstName: users.firstName,
       lastName: users.lastName,
       role: users.role,
+      studentNumber: users.studentNumber,
       schoolId: users.schoolId,
       phone: users.phone,
       dateOfBirth: users.dateOfBirth,
@@ -125,6 +129,7 @@ usersRouter.get('/:id', authMiddleware, async (c) => {
       firstName: users.firstName,
       lastName: users.lastName,
       role: users.role,
+      studentNumber: users.studentNumber,
       schoolId: users.schoolId,
       phone: users.phone,
       dateOfBirth: users.dateOfBirth,
@@ -168,7 +173,7 @@ usersRouter.post('/', authMiddleware, async (c) => {
     }
     
     const userData = result.data
-    
+
     // Transform dateOfBirth if it's a string
     if (userData.dateOfBirth && typeof userData.dateOfBirth === 'string') {
       userData.dateOfBirth = new Date(userData.dateOfBirth)
@@ -196,12 +201,32 @@ usersRouter.post('/', authMiddleware, async (c) => {
     // Hash password
     const hashedPassword = await hashPassword(userData.password)
 
+    // Determine student number assignment
+    let studentNumber = userData.studentNumber ?? null
+    if (userData.role === 'student') {
+      if (studentNumber) {
+        const existingStudentNumber = await db.select({ id: users.id })
+          .from(users)
+          .where(eq(users.studentNumber, studentNumber))
+          .limit(1)
+
+        if (existingStudentNumber.length) {
+          return c.json({ error: 'Student ID already in use' }, 409)
+        }
+      } else {
+        studentNumber = await generateStudentNumber()
+      }
+    } else {
+      studentNumber = null
+    }
+
     // Create user
     const { password, ...userDataWithoutPassword } = userData
     const newUser = await db.insert(users).values({
       ...userDataWithoutPassword,
       passwordHash: hashedPassword,
-      dateOfBirth: userData.dateOfBirth instanceof Date ? userData.dateOfBirth : 
+      studentNumber,
+      dateOfBirth: userData.dateOfBirth instanceof Date ? userData.dateOfBirth :
                    userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
     }).returning({
       id: users.id,
@@ -209,6 +234,7 @@ usersRouter.post('/', authMiddleware, async (c) => {
       firstName: users.firstName,
       lastName: users.lastName,
       role: users.role,
+      studentNumber: users.studentNumber,
       schoolId: users.schoolId,
       phone: users.phone,
       dateOfBirth: users.dateOfBirth,
@@ -263,11 +289,36 @@ usersRouter.put('/:id', authMiddleware, zValidator('json', updateUserSchema), as
     }
 
     // Transform dateOfBirth if it's a string
+    const finalRole = userData.role ?? targetUser.role
+
+    let studentNumberUpdate = userData.studentNumber
+    if (finalRole === 'student') {
+      if (studentNumberUpdate === undefined || studentNumberUpdate === null) {
+        studentNumberUpdate = targetUser.studentNumber ?? await generateStudentNumber()
+      } else {
+        if (!isValidStudentNumber(studentNumberUpdate)) {
+          return c.json({ error: 'Student ID must be a 6-digit number' }, 400)
+        }
+
+        const existingStudentNumber = await db.select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.studentNumber, studentNumberUpdate), ne(users.id, userId)))
+          .limit(1)
+
+        if (existingStudentNumber.length) {
+          return c.json({ error: 'Student ID already in use' }, 409)
+        }
+      }
+    } else {
+      studentNumberUpdate = null
+    }
+
     const updateData = {
       ...userData,
+      studentNumber: studentNumberUpdate,
       updatedAt: new Date(),
-      dateOfBirth: userData.dateOfBirth instanceof Date ? userData.dateOfBirth : 
-                   userData.dateOfBirth ? new Date(userData.dateOfBirth) : 
+      dateOfBirth: userData.dateOfBirth instanceof Date ? userData.dateOfBirth :
+                   userData.dateOfBirth ? new Date(userData.dateOfBirth) :
                    userData.dateOfBirth === null ? null : undefined
     }
     
@@ -280,6 +331,7 @@ usersRouter.put('/:id', authMiddleware, zValidator('json', updateUserSchema), as
         firstName: users.firstName,
         lastName: users.lastName,
         role: users.role,
+        studentNumber: users.studentNumber,
         schoolId: users.schoolId,
         phone: users.phone,
         dateOfBirth: users.dateOfBirth,

@@ -34,6 +34,7 @@ export const users = pgTable('users', {
   firstName: text('first_name').notNull(),
   lastName: text('last_name').notNull(),
   role: userRoleEnum('role').notNull(),
+  studentNumber: text('student_number'),
   schoolId: uuid('school_id').references(() => schools.id),
   phone: text('phone'),
   dateOfBirth: timestamp('date_of_birth'),
@@ -45,6 +46,7 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   emailIdx: unique('users_email_unique').on(table.email),
+  studentNumberIdx: unique('users_student_number_unique').on(table.studentNumber),
   schoolRoleIdx: index('users_school_role_idx').on(table.schoolId, table.role),
   activeIdx: index('users_active_idx').on(table.isActive),
   nameIdx: index('users_name_idx').on(table.firstName, table.lastName),
@@ -306,8 +308,12 @@ export const documentsRelations = relations(documents, ({ one }) => ({
 export const insertSchoolSchema = createInsertSchema(schools)
 export const selectSchoolSchema = createSelectSchema(schools)
 
-export const insertUserSchema = createInsertSchema(users)
-export const selectUserSchema = createSelectSchema(users)
+export const insertUserSchema = createInsertSchema(users, {
+  studentNumber: z.string().regex(/^\d{6}$/, 'Student ID must be a 6-digit number').optional().nullable(),
+})
+export const selectUserSchema = createSelectSchema(users, {
+  studentNumber: z.string().regex(/^\d{6}$/).optional().nullable(),
+})
 
 export const insertAcademicYearSchema = createInsertSchema(academicYears)
 export const selectAcademicYearSchema = createSelectSchema(academicYears)

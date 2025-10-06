@@ -70,6 +70,7 @@ async function seed() {
       firstName: 'Alice',
       lastName: 'Student',
       role: 'student',
+      studentNumber: '200001',
       schoolId: school.id,
       dateOfBirth: new Date('2012-05-15'),
       isActive: true,
