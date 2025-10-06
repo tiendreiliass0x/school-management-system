@@ -15,6 +15,13 @@
       "when": 1758519028066,
       "tag": "0001_perpetual_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1758600000000,
+      "tag": "0002_student_number_ids",
+      "breakpoints": true
     }
   ]
 }

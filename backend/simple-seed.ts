@@ -83,6 +83,7 @@ async function createDemoData() {
       email: 'emma.student@demoschool.edu',
       passwordHash: studentPassword,
       role: 'student',
+      studentNumber: '300001',
       schoolId: demoSchool[0].id,
       phone: '+1 (555) 345-6789',
       isActive: true,

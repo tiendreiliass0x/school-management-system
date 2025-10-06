@@ -154,6 +154,7 @@ classesRouter.get('/:id', authMiddleware, async (c) => {
       firstName: users.firstName,
       lastName: users.lastName,
       email: users.email,
+      studentNumber: users.studentNumber,
       enrollmentDate: enrollments.enrollmentDate,
       isActive: enrollments.isActive,
     }).from(enrollments)
