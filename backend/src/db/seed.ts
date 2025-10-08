@@ -1,6 +1,16 @@
 import bcrypt from 'bcryptjs'
 import { db } from './index'
-import { schools, users, classes, academicYears, enrollments } from './schema'
+import {
+  schools,
+  users,
+  classes,
+  academicYears,
+  enrollments,
+  trimesters,
+  classTests,
+  testResults,
+  trimesterGrades,
+} from './schema'
 
 async function seed() {
 
@@ -38,6 +48,47 @@ async function seed() {
       .returning()
 
     console.log('✅ Created academic year')
+
+    // Create trimesters for the academic year
+    const firstTrimesterStart = new Date(`${currentYear}-09-01`)
+    const firstTrimesterEnd = new Date(`${currentYear}-11-30`)
+    const secondTrimesterStart = new Date(`${currentYear}-12-01`)
+    const secondTrimesterEnd = new Date(`${currentYear + 1}-02-28`)
+    const thirdTrimesterStart = new Date(`${currentYear + 1}-03-01`)
+    const thirdTrimesterEnd = new Date(`${currentYear + 1}-06-30`)
+
+    const trimesterRecords = await db
+      .insert(trimesters)
+      .values([
+        {
+          academicYearId: academicYear.id,
+          name: 'first',
+          sequenceNumber: 1,
+          startDate: firstTrimesterStart,
+          endDate: firstTrimesterEnd,
+        },
+        {
+          academicYearId: academicYear.id,
+          name: 'second',
+          sequenceNumber: 2,
+          startDate: secondTrimesterStart,
+          endDate: secondTrimesterEnd,
+        },
+        {
+          academicYearId: academicYear.id,
+          name: 'third',
+          sequenceNumber: 3,
+          startDate: thirdTrimesterStart,
+          endDate: thirdTrimesterEnd,
+        },
+      ])
+      .returning()
+
+    console.log('✅ Created academic year trimesters')
+
+    const firstTrimester = trimesterRecords.find(trimester => trimester.sequenceNumber === 1)!
+    const secondTrimester = trimesterRecords.find(trimester => trimester.sequenceNumber === 2)!
+    const thirdTrimester = trimesterRecords.find(trimester => trimester.sequenceNumber === 3)!
 
     // Create super admin user
     const superAdminPassword = await bcrypt.hash('admin123!', 12)
@@ -208,6 +259,7 @@ async function seed() {
           gradeLevel: 5, // Changed from string to integer
           capacity: 25,
           room: 'Room 101',
+          trimesterId: firstTrimester.id,
         },
         {
           schoolId: demoSchool.id,
@@ -218,6 +270,7 @@ async function seed() {
           gradeLevel: 5, // Changed from string to integer
           capacity: 25,
           room: 'Room 102',
+          trimesterId: secondTrimester.id,
         },
         {
           schoolId: demoSchool.id,
@@ -228,6 +281,7 @@ async function seed() {
           gradeLevel: 5, // Changed from string to integer
           capacity: 25,
           room: 'Room 103',
+          trimesterId: thirdTrimester.id,
         },
       ])
       .returning()
@@ -286,6 +340,216 @@ async function seed() {
 
     await db.insert(enrollments).values(enrollmentData)
     console.log('✅ Created student enrollments')
+
+    // Create class tests for each trimester
+    const mathTests = await db
+      .insert(classTests)
+      .values([
+        {
+          classId: demoClasses[0].id,
+          trimesterId: firstTrimester.id,
+          title: 'Mathematics - Trimester 1 Midterm',
+          testDate: new Date(`${currentYear}-10-15`),
+          weight: '0.40',
+          maxScore: '100.00',
+          description: 'Midterm assessment covering algebra and fractions',
+        },
+        {
+          classId: demoClasses[0].id,
+          trimesterId: firstTrimester.id,
+          title: 'Mathematics - Trimester 1 Final',
+          testDate: new Date(`${currentYear}-11-25`),
+          weight: '0.60',
+          maxScore: '100.00',
+          description: 'Comprehensive trimester assessment',
+        },
+      ])
+      .returning()
+
+    const scienceTests = await db
+      .insert(classTests)
+      .values([
+        {
+          classId: demoClasses[1].id,
+          trimesterId: secondTrimester.id,
+          title: 'Science - Trimester 2 Lab Practical',
+          testDate: new Date(`${currentYear + 1}-01-10`),
+          weight: '0.30',
+          maxScore: '100.00',
+          description: 'Hands-on lab assessment for ecosystems unit',
+        },
+        {
+          classId: demoClasses[1].id,
+          trimesterId: secondTrimester.id,
+          title: 'Science - Trimester 2 Research Project',
+          testDate: new Date(`${currentYear + 1}-02-05`),
+          weight: '0.30',
+          maxScore: '100.00',
+          description: 'Written project on renewable energy sources',
+        },
+        {
+          classId: demoClasses[1].id,
+          trimesterId: secondTrimester.id,
+          title: 'Science - Trimester 2 Cumulative Exam',
+          testDate: new Date(`${currentYear + 1}-02-25`),
+          weight: '0.40',
+          maxScore: '100.00',
+          description: 'Exam covering all trimester content',
+        },
+      ])
+      .returning()
+
+    const englishTests = await db
+      .insert(classTests)
+      .values([
+        {
+          classId: demoClasses[2].id,
+          trimesterId: thirdTrimester.id,
+          title: 'English - Trimester 3 Literary Analysis',
+          testDate: new Date(`${currentYear + 1}-04-10`),
+          weight: '0.50',
+          maxScore: '100.00',
+          description: 'Essay analyzing assigned novel themes',
+        },
+        {
+          classId: demoClasses[2].id,
+          trimesterId: thirdTrimester.id,
+          title: 'English - Trimester 3 Oral Presentation',
+          testDate: new Date(`${currentYear + 1}-05-20`),
+          weight: '0.50',
+          maxScore: '100.00',
+          description: 'Presentation evaluating persuasive speaking skills',
+        },
+      ])
+      .returning()
+
+    console.log('✅ Created class tests')
+
+    // Helper to insert test results for a class
+    const insertTestResults = async (options: {
+      testIds: string[]
+      scoresByStudent: { studentId: string; scores: number[] }[]
+      teacherId: string
+    }) => {
+      const { testIds, scoresByStudent, teacherId } = options
+      const now = new Date()
+      const rows = scoresByStudent.flatMap(({ studentId, scores }) =>
+        scores.map((score, index) => ({
+          testId: testIds[index],
+          studentId,
+          score: score.toFixed(2),
+          gradedAt: now,
+          gradedBy: teacherId,
+          feedback: 'Recorded during trimester assessment period',
+        }))
+      )
+      if (rows.length > 0) {
+        await db.insert(testResults).values(rows)
+      }
+    }
+
+    await insertTestResults({
+      testIds: mathTests.map(test => test.id),
+      scoresByStudent: [
+        { studentId: students[0].id, scores: [85, 90] },
+        { studentId: students[1].id, scores: [78, 82] },
+        { studentId: students[2].id, scores: [92, 95] },
+      ],
+      teacherId: teachers[0].id,
+    })
+
+    await insertTestResults({
+      testIds: scienceTests.map(test => test.id),
+      scoresByStudent: [
+        { studentId: students[2].id, scores: [88, 90, 94] },
+        { studentId: students[3].id, scores: [82, 85, 80] },
+        { studentId: students[4].id, scores: [90, 87, 92] },
+      ],
+      teacherId: teachers[1].id,
+    })
+
+    await insertTestResults({
+      testIds: englishTests.map(test => test.id),
+      scoresByStudent: [
+        { studentId: students[0].id, scores: [93, 95] },
+        { studentId: students[1].id, scores: [85, 88] },
+        { studentId: students[2].id, scores: [91, 90] },
+        { studentId: students[3].id, scores: [87, 89] },
+        { studentId: students[4].id, scores: [95, 96] },
+      ],
+      teacherId: teachers[2].id,
+    })
+
+    console.log('✅ Recorded test results')
+
+    const calculateTrimesterGrades = (
+      classId: string,
+      trimesterId: string,
+      teacherId: string,
+      weightings: number[],
+      studentScores: { studentId: string; scores: number[] }[],
+    ) => {
+      const totalWeight = weightings.reduce((sum, weight) => sum + weight, 0)
+      const now = new Date()
+      return studentScores.map(({ studentId, scores }) => {
+        const weightedScore = scores.reduce((sum, score, index) => sum + score * weightings[index], 0)
+        const normalized = weightedScore / totalWeight
+        return {
+          studentId,
+          classId,
+          trimesterId,
+          finalGrade: normalized.toFixed(2),
+          calculatedAt: now,
+          calculatedBy: teacherId,
+          calculationMethod: 'weighted_average',
+          notes: 'Calculated from recorded class tests',
+        }
+      })
+    }
+
+    const mathTrimesterGrades = calculateTrimesterGrades(
+      demoClasses[0].id,
+      firstTrimester.id,
+      teachers[0].id,
+      [0.4, 0.6],
+      [
+        { studentId: students[0].id, scores: [85, 90] },
+        { studentId: students[1].id, scores: [78, 82] },
+        { studentId: students[2].id, scores: [92, 95] },
+      ]
+    )
+
+    const scienceTrimesterGrades = calculateTrimesterGrades(
+      demoClasses[1].id,
+      secondTrimester.id,
+      teachers[1].id,
+      [0.3, 0.3, 0.4],
+      [
+        { studentId: students[2].id, scores: [88, 90, 94] },
+        { studentId: students[3].id, scores: [82, 85, 80] },
+        { studentId: students[4].id, scores: [90, 87, 92] },
+      ]
+    )
+
+    const englishTrimesterGrades = calculateTrimesterGrades(
+      demoClasses[2].id,
+      thirdTrimester.id,
+      teachers[2].id,
+      [0.5, 0.5],
+      [
+        { studentId: students[0].id, scores: [93, 95] },
+        { studentId: students[1].id, scores: [85, 88] },
+        { studentId: students[2].id, scores: [91, 90] },
+        { studentId: students[3].id, scores: [87, 89] },
+        { studentId: students[4].id, scores: [95, 96] },
+      ]
+    )
+
+    await db
+      .insert(trimesterGrades)
+      .values([...mathTrimesterGrades, ...scienceTrimesterGrades, ...englishTrimesterGrades])
+
+    console.log('✅ Stored final trimester grades')
 
     console.log('\n🎉 Database seeding completed successfully!')
     console.log('\n📋 Demo Accounts Created:')

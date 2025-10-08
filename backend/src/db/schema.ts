@@ -7,6 +7,7 @@ export const userRoleEnum = pgEnum('user_role', ['super_admin', 'school_admin', 
 export const gradeStatusEnum = pgEnum('grade_status', ['draft', 'published'])
 export const academicTermEnum = pgEnum('academic_term', ['fall', 'spring', 'summer', 'full_year'])
 export const documentStatusEnum = pgEnum('document_status', ['pending', 'uploaded', 'failed'])
+export const trimesterNameEnum = pgEnum('trimester_name', ['first', 'second', 'third'])
 
 export const schools = pgTable('schools', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -66,10 +67,27 @@ export const academicYears = pgTable('academic_years', {
   schoolYearIdx: unique('academic_years_school_year_unique').on(table.schoolId, table.year), // Updated to use 'year'
 }))
 
+export const trimesters = pgTable('trimesters', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  academicYearId: uuid('academic_year_id').notNull().references(() => academicYears.id),
+  name: trimesterNameEnum('name').notNull(),
+  sequenceNumber: integer('sequence_number').notNull(),
+  startDate: timestamp('start_date').notNull(),
+  endDate: timestamp('end_date').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  academicYearNameIdx: unique('trimesters_year_name_unique').on(table.academicYearId, table.name),
+  academicYearSequenceIdx: unique('trimesters_year_sequence_unique').on(table.academicYearId, table.sequenceNumber),
+  academicYearActiveIdx: index('trimesters_year_active_idx').on(table.academicYearId, table.isActive),
+}))
+
 export const classes = pgTable('classes', {
   id: uuid('id').primaryKey().defaultRandom(),
   schoolId: uuid('school_id').notNull().references(() => schools.id),
   academicYearId: uuid('academic_year_id').notNull().references(() => academicYears.id),
+  trimesterId: uuid('trimester_id').notNull().references(() => trimesters.id),
   name: text('name').notNull(), // e.g., "Grade 5A", "Physics 101"
   subject: text('subject'),
   gradeLevel: integer('grade_level'), // Changed back to integer to match migration
@@ -82,6 +100,7 @@ export const classes = pgTable('classes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   schoolYearIdx: index('classes_school_year_idx').on(table.schoolId, table.academicYearId),
+  trimesterIdx: index('classes_trimester_idx').on(table.trimesterId),
   teacherActiveIdx: index('classes_teacher_active_idx').on(table.teacherId, table.isActive),
   gradeIdx: index('classes_grade_idx').on(table.gradeLevel),
   schoolNameIdx: unique('classes_school_name_unique').on(table.schoolId, table.name, table.academicYearId),
@@ -116,6 +135,61 @@ export const assignments = pgTable('assignments', {
   classActiveIdx: index('assignments_class_active_idx').on(table.classId, table.isActive),
   dueDateIdx: index('assignments_due_date_idx').on(table.dueDate),
   classTitleIdx: unique('assignments_class_title_unique').on(table.classId, table.title),
+}))
+
+export const classTests = pgTable('class_tests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  classId: uuid('class_id').notNull().references(() => classes.id),
+  trimesterId: uuid('trimester_id').notNull().references(() => trimesters.id),
+  title: text('title').notNull(),
+  description: text('description'),
+  testDate: timestamp('test_date'),
+  weight: decimal('weight', { precision: 4, scale: 2 }).default('1.00').notNull(),
+  maxScore: decimal('max_score', { precision: 5, scale: 2 }).default('100.00').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  classTrimesterIdx: index('class_tests_trimester_idx').on(table.classId, table.trimesterId),
+  trimesterIdx: index('class_tests_trimester_only_idx').on(table.trimesterId),
+  classTitleIdx: unique('class_tests_class_title_unique').on(table.classId, table.title),
+}))
+
+export const testResults = pgTable('test_results', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  testId: uuid('test_id').notNull().references(() => classTests.id),
+  studentId: uuid('student_id').notNull().references(() => users.id),
+  score: decimal('score', { precision: 5, scale: 2 }).notNull(),
+  gradedAt: timestamp('graded_at'),
+  gradedBy: uuid('graded_by').references(() => users.id),
+  feedback: text('feedback'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  studentTestIdx: unique('test_results_student_test_unique').on(table.studentId, table.testId),
+  testIdx: index('test_results_test_idx').on(table.testId),
+  studentIdx: index('test_results_student_idx').on(table.studentId),
+}))
+
+export const trimesterGrades = pgTable('trimester_grades', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  studentId: uuid('student_id').notNull().references(() => users.id),
+  classId: uuid('class_id').notNull().references(() => classes.id),
+  trimesterId: uuid('trimester_id').notNull().references(() => trimesters.id),
+  finalGrade: decimal('final_grade', { precision: 5, scale: 2 }).notNull(),
+  calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
+  calculatedBy: uuid('calculated_by').references(() => users.id),
+  calculationMethod: text('calculation_method'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  studentClassTrimesterIdx: unique('trimester_grades_student_class_trimester_unique').on(
+    table.studentId,
+    table.classId,
+    table.trimesterId
+  ),
+  classTrimesterIdx: index('trimester_grades_class_trimester_idx').on(table.classId, table.trimesterId),
+  studentTrimesterIdx: index('trimester_grades_student_trimester_idx').on(table.studentId, table.trimesterId),
 }))
 
 export const grades = pgTable('grades', {
@@ -206,6 +280,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   enrollments: many(enrollments),
   grades: many(grades),
   attendance: many(attendance),
+  testResults: many(testResults),
+  gradedTestResults: many(testResults, { relationName: 'testResultGrader' }),
+  calculatedTrimesterGrades: many(trimesterGrades, { relationName: 'calculatedByUser' }),
   teachingClasses: many(classes, { relationName: 'teacher' }),
   gradedAssignments: many(grades, { relationName: 'grader' }),
   refreshTokens: many(refreshTokens),
@@ -216,7 +293,18 @@ export const academicYearsRelations = relations(academicYears, ({ one, many }) =
     fields: [academicYears.schoolId],
     references: [schools.id],
   }),
+  trimesters: many(trimesters),
   classes: many(classes),
+}))
+
+export const trimestersRelations = relations(trimesters, ({ one, many }) => ({
+  academicYear: one(academicYears, {
+    fields: [trimesters.academicYearId],
+    references: [academicYears.id],
+  }),
+  classes: many(classes),
+  tests: many(classTests),
+  trimesterGrades: many(trimesterGrades),
 }))
 
 export const classesRelations = relations(classes, ({ one, many }) => ({
@@ -228,6 +316,10 @@ export const classesRelations = relations(classes, ({ one, many }) => ({
     fields: [classes.academicYearId],
     references: [academicYears.id],
   }),
+  trimester: one(trimesters, {
+    fields: [classes.trimesterId],
+    references: [trimesters.id],
+  }),
   teacher: one(users, {
     fields: [classes.teacherId],
     references: [users.id],
@@ -235,6 +327,8 @@ export const classesRelations = relations(classes, ({ one, many }) => ({
   enrollments: many(enrollments),
   assignments: many(assignments),
   attendance: many(attendance),
+  tests: many(classTests),
+  trimesterGrades: many(trimesterGrades),
 }))
 
 export const enrollmentsRelations = relations(enrollments, ({ one }) => ({
@@ -254,6 +348,34 @@ export const assignmentsRelations = relations(assignments, ({ one, many }) => ({
     references: [classes.id],
   }),
   grades: many(grades),
+}))
+
+export const classTestsRelations = relations(classTests, ({ one, many }) => ({
+  class: one(classes, {
+    fields: [classTests.classId],
+    references: [classes.id],
+  }),
+  trimester: one(trimesters, {
+    fields: [classTests.trimesterId],
+    references: [trimesters.id],
+  }),
+  results: many(testResults),
+}))
+
+export const testResultsRelations = relations(testResults, ({ one }) => ({
+  test: one(classTests, {
+    fields: [testResults.testId],
+    references: [classTests.id],
+  }),
+  student: one(users, {
+    fields: [testResults.studentId],
+    references: [users.id],
+  }),
+  grader: one(users, {
+    fields: [testResults.gradedBy],
+    references: [users.id],
+    relationName: 'testResultGrader',
+  }),
 }))
 
 export const gradesRelations = relations(grades, ({ one }) => ({
@@ -283,6 +405,26 @@ export const attendanceRelations = relations(attendance, ({ one }) => ({
   recorder: one(users, {
     fields: [attendance.recordedBy],
     references: [users.id],
+  }),
+}))
+
+export const trimesterGradesRelations = relations(trimesterGrades, ({ one }) => ({
+  student: one(users, {
+    fields: [trimesterGrades.studentId],
+    references: [users.id],
+  }),
+  class: one(classes, {
+    fields: [trimesterGrades.classId],
+    references: [classes.id],
+  }),
+  trimester: one(trimesters, {
+    fields: [trimesterGrades.trimesterId],
+    references: [trimesters.id],
+  }),
+  calculatedByUser: one(users, {
+    fields: [trimesterGrades.calculatedBy],
+    references: [users.id],
+    relationName: 'calculatedByUser',
   }),
 }))
 
@@ -321,6 +463,18 @@ export const selectAcademicYearSchema = createSelectSchema(academicYears)
 export const insertClassSchema = createInsertSchema(classes)
 export const selectClassSchema = createSelectSchema(classes)
 
+export const insertTrimesterSchema = createInsertSchema(trimesters)
+export const selectTrimesterSchema = createSelectSchema(trimesters)
+
+export const insertClassTestSchema = createInsertSchema(classTests)
+export const selectClassTestSchema = createSelectSchema(classTests)
+
+export const insertTestResultSchema = createInsertSchema(testResults)
+export const selectTestResultSchema = createSelectSchema(testResults)
+
+export const insertTrimesterGradeSchema = createInsertSchema(trimesterGrades)
+export const selectTrimesterGradeSchema = createSelectSchema(trimesterGrades)
+
 export const insertEnrollmentSchema = createInsertSchema(enrollments)
 export const selectEnrollmentSchema = createSelectSchema(enrollments)
 
@@ -353,8 +507,20 @@ export type NewUser = typeof users.$inferInsert
 export type AcademicYear = typeof academicYears.$inferSelect
 export type NewAcademicYear = typeof academicYears.$inferInsert
 
+export type Trimester = typeof trimesters.$inferSelect
+export type NewTrimester = typeof trimesters.$inferInsert
+
 export type Class = typeof classes.$inferSelect
 export type NewClass = typeof classes.$inferInsert
+
+export type ClassTest = typeof classTests.$inferSelect
+export type NewClassTest = typeof classTests.$inferInsert
+
+export type TestResult = typeof testResults.$inferSelect
+export type NewTestResult = typeof testResults.$inferInsert
+
+export type TrimesterGrade = typeof trimesterGrades.$inferSelect
+export type NewTrimesterGrade = typeof trimesterGrades.$inferInsert
 
 export type Enrollment = typeof enrollments.$inferSelect
 export type NewEnrollment = typeof enrollments.$inferInsert

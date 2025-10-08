@@ -3,8 +3,8 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { eq, and, or, ilike, count } from 'drizzle-orm'
 import { db } from '../db'
-import { classes, users, enrollments, insertClassSchema, academicYears } from '../db/schema'
-import { authMiddleware, requireRole, requireSchoolAccess } from '../middleware/auth'
+import { classes, users, enrollments, insertClassSchema, academicYears, trimesters } from '../db/schema'
+import { authMiddleware, requireSchoolAccess } from '../middleware/auth'
 
 const classesRouter = new Hono()
 
@@ -23,12 +23,13 @@ const querySchema = z.object({
   teacherId: z.string().optional(),
   gradeLevel: z.string().optional(),
   academicYearId: z.string().optional(),
+  trimesterId: z.string().optional(),
 })
 
 // Get classes with pagination and filtering
 classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', querySchema), async (c) => {
   try {
-    const { page, limit, search, teacherId, gradeLevel, academicYearId } = c.req.valid('query')
+    const { page, limit, search, teacherId, gradeLevel, academicYearId, trimesterId } = c.req.valid('query')
     const currentUser = c.get('user')
     
     const pageNum = parseInt(page)
@@ -41,6 +42,7 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
       id: classes.id,
       schoolId: classes.schoolId,
       academicYearId: classes.academicYearId,
+      trimesterId: classes.trimesterId,
       name: classes.name,
       subject: classes.subject,
       gradeLevel: classes.gradeLevel,
@@ -53,7 +55,13 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
       updatedAt: classes.updatedAt,
       teacherName: users.firstName,
       teacherLastName: users.lastName,
-    }).from(classes).leftJoin(users, eq(classes.teacherId, users.id))
+      trimesterName: trimesters.name,
+      trimesterSequence: trimesters.sequenceNumber,
+      trimesterStartDate: trimesters.startDate,
+      trimesterEndDate: trimesters.endDate,
+    }).from(classes)
+      .leftJoin(users, eq(classes.teacherId, users.id))
+      .leftJoin(trimesters, eq(classes.trimesterId, trimesters.id))
     
     // School filter
     if (currentUser.role !== 'super_admin') {
@@ -78,6 +86,7 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
       }
     }
     if (academicYearId) conditions.push(eq(classes.academicYearId, academicYearId))
+    if (trimesterId) conditions.push(eq(classes.trimesterId, trimesterId))
 
     const filters = conditions.length > 0 ? and(...conditions) : undefined
 
@@ -90,6 +99,7 @@ classesRouter.get('/', authMiddleware, requireSchoolAccess, zValidator('query', 
       .select({ count: count() })
       .from(classes)
       .leftJoin(users, eq(classes.teacherId, users.id))
+      .leftJoin(trimesters, eq(classes.trimesterId, trimesters.id))
     const countQuery = filters ? countBaseQuery.where(filters) : countBaseQuery
     const [{ count: total }] = await countQuery
 
@@ -118,6 +128,7 @@ classesRouter.get('/:id', authMiddleware, async (c) => {
       id: classes.id,
       schoolId: classes.schoolId,
       academicYearId: classes.academicYearId,
+      trimesterId: classes.trimesterId,
       name: classes.name,
       subject: classes.subject,
       gradeLevel: classes.gradeLevel,
@@ -131,8 +142,13 @@ classesRouter.get('/:id', authMiddleware, async (c) => {
       teacherName: users.firstName,
       teacherLastName: users.lastName,
       teacherEmail: users.email,
+      trimesterName: trimesters.name,
+      trimesterSequence: trimesters.sequenceNumber,
+      trimesterStartDate: trimesters.startDate,
+      trimesterEndDate: trimesters.endDate,
     }).from(classes)
       .leftJoin(users, eq(classes.teacherId, users.id))
+      .leftJoin(trimesters, eq(classes.trimesterId, trimesters.id))
       .where(eq(classes.id, classId))
       .limit(1)
 
@@ -201,6 +217,34 @@ classesRouter.post('/', authMiddleware, zValidator('json', createClassSchema), a
       }
     }
 
+    const [targetAcademicYear] = await db
+      .select()
+      .from(academicYears)
+      .where(eq(academicYears.id, classData.academicYearId))
+      .limit(1)
+
+    if (!targetAcademicYear) {
+      return c.json({ error: 'Academic year not found' }, 400)
+    }
+
+    if (targetAcademicYear.schoolId !== classData.schoolId) {
+      return c.json({ error: 'Academic year does not belong to the specified school' }, 400)
+    }
+
+    const [targetTrimester] = await db
+      .select()
+      .from(trimesters)
+      .where(eq(trimesters.id, classData.trimesterId))
+      .limit(1)
+
+    if (!targetTrimester) {
+      return c.json({ error: 'Trimester not found' }, 400)
+    }
+
+    if (targetTrimester.academicYearId !== classData.academicYearId) {
+      return c.json({ error: 'Trimester must belong to the selected academic year' }, 400)
+    }
+
     const newClass = await db.insert(classes).values(classData).returning()
 
     return c.json({
@@ -255,6 +299,40 @@ classesRouter.put('/:id', authMiddleware, zValidator('json', updateClassSchema),
 
       if (!teacher.length || teacher[0].schoolId !== targetClass.schoolId) {
         return c.json({ error: 'Teacher not found or not in the same school' }, 400)
+      }
+    }
+
+    if (classData.academicYearId || classData.trimesterId || classData.schoolId) {
+      const schoolId = classData.schoolId ?? targetClass.schoolId
+      const academicYearId = classData.academicYearId ?? targetClass.academicYearId
+      const trimesterId = classData.trimesterId ?? targetClass.trimesterId
+
+      const [targetAcademicYear] = await db
+        .select()
+        .from(academicYears)
+        .where(eq(academicYears.id, academicYearId))
+        .limit(1)
+
+      if (!targetAcademicYear) {
+        return c.json({ error: 'Academic year not found' }, 400)
+      }
+
+      if (targetAcademicYear.schoolId !== schoolId) {
+        return c.json({ error: 'Academic year does not belong to the class school' }, 400)
+      }
+
+      const [targetTrimester] = await db
+        .select()
+        .from(trimesters)
+        .where(eq(trimesters.id, trimesterId))
+        .limit(1)
+
+      if (!targetTrimester) {
+        return c.json({ error: 'Trimester not found' }, 400)
+      }
+
+      if (targetTrimester.academicYearId !== academicYearId) {
+        return c.json({ error: 'Trimester must belong to the associated academic year' }, 400)
       }
     }
 
