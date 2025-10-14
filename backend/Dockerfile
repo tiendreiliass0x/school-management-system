@@ -8,8 +8,8 @@ WORKDIR /app
 RUN groupadd -g 1001 -r nodejs && \
     useradd -r -g nodejs -u 1001 nodejs
 
-# Copy package files
-COPY package.json bun.lockb* ./
+# Copy package files (supporting both text and binary Bun lockfiles)
+COPY package.json bun.lock* ./
 
 # Install dependencies
 RUN bun install --frozen-lockfile --production
