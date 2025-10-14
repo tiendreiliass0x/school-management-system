@@ -83,6 +83,21 @@ A comprehensive, production-ready school management SaaS application built with 
    - Backend API: http://localhost:8000
    - API Documentation: http://localhost:8000/docs
 
+## 🧪 Continuous Integration & Delivery
+
+Automated checks keep the application ready for deployment. The `CI` workflow in
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+- ✅ **Backend pipeline** – Installs Bun dependencies, type-checks, runs tests, and
+  builds the production bundle.
+- ✅ **Frontend pipeline** – Installs Node.js dependencies, lints, type-checks, and
+  compiles the Next.js application.
+- ✅ **Container validation** – Builds the backend and frontend Docker images to
+  ensure deployment artifacts stay healthy.
+
+Use the **`workflow_dispatch`** trigger to run the workflow manually when you need a
+fresh deployment readiness check.
+
 ## 👤 Demo Accounts
 
 After seeding the database, you can use these accounts:
